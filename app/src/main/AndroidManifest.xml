@@ -1,0 +1,56 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Request Usage Access so the system lists this app in Usage Access settings -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+
+    <application
+        android:label="TiVo Channels Home"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Leanback">
+
+        <!-- Launcher activity -->
+        <activity android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Convenience activity to open Accessibility Settings -->
+        <activity android:name=".AccessibilitySettingsActivity"
+            android:exported="true"
+            android:label="Open Accessibility Settings" />
+
+        <!-- Convenience activity to open Usage Access Settings -->
+        <activity android:name=".UsageAccessActivity"
+            android:exported="true"
+            android:label="Open Usage Access Settings" />
+
+        <!-- Accessibility service -->
+        <service
+            android:name=".TiVoButtonService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="@string/accessibility_service_name"
+            android:description="@string/accessibility_service_description">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
+        </service>
+
+        <!-- Background service that monitors foreground app and redirects TiVo Stream to Channels DVR -->
+        <service
+            android:name=".UsageMonitorService"
+            android:exported="true"
+            android:foregroundServiceType="connectedDevice" />
+
+    </application>
+</manifest>
