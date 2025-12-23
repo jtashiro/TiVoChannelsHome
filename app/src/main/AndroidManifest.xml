@@ -1,22 +1,39 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Declare Leanback feature for Android TV (not required on handset) -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <!-- Mark touchscreen as optional for TV devices -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- Optional: advertise this is TV-capable (not strictly required) -->
+    <uses-feature android:name="android.hardware.type.television" android:required="false" />
+
     <!-- Request Usage Access so the system lists this app in Usage Access settings -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <!-- Permission for posting notifications on Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Permission required to start foreground services (startForeground) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
         android:label="TiVo Channels Home"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_tv_launcher"
+        android:logo="@mipmap/ic_tv_launcher"
+        android:banner="@drawable/tv_banner"
         android:theme="@style/Theme.Leanback">
 
-        <!-- Launcher activity -->
+        <!-- Receiver bridge activity for adb-triggered reorder requests -->
+        <activity android:name=".ReceiveBridgeActivity" android:exported="true" />
+
+        <!-- Launcher activity (exposed as Leanback launcher so app can be published to Google Play for TV) -->
         <activity android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
+            <!-- Declare Leanback launcher so the Play Store recognizes this as a TV app and
+                 the activity appears in the Android TV launcher. Remove this intent-filter if
+                 you later want the app hidden from the TV launcher. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-
-                <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>

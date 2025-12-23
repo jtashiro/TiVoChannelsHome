@@ -20,6 +20,19 @@ class UsageMonitorService : Service() {
     private val TAG = "UsageMonitorService"
     private var running = false
     private lateinit var handler: Handler
+    private val PREFS_NAME = "tivo_prefs"
+
+    // When true (set by AccessibilitySettingsActivity while the configuration UI is visible)
+    // the UsageMonitorService should not schedule auto-launches of Channels DVR.
+    private fun isLaunchSuppressed(): Boolean {
+        return try {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.getBoolean("suppress_launch_for_config", false)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read suppression pref", e)
+            false
+        }
+    }
 
     // Debounce / persistence window (ms) before we react to a foreground switch
     private val PERSISTENCE_MS = 1500L
@@ -45,6 +58,9 @@ class UsageMonitorService : Service() {
     // Track last time we saw any usage events (for NO_USAGE_TIMEOUT_MS)
     private var lastUsageEventSeenAt: Long = 0L
 
+    // Target package to launch (Google TV Launcher) when TiVo Home is detected
+    private val TARGET_PKG = "com.google.android.apps.tv.launcherx"
+
     override fun onCreate() {
         super.onCreate()
         val thread = HandlerThread("usage-monitor")
@@ -62,7 +78,7 @@ class UsageMonitorService : Service() {
 
         val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .setContentTitle("TiVo Channels — Usage Monitor")
+            .setContentTitle("TiVo Google TV — Usage Monitor")
             .setContentText("Monitoring foreground apps to intercept TiVo. Tap to open Usage Access settings.")
             .setContentIntent(pending)
             .setOngoing(true)
@@ -134,8 +150,7 @@ class UsageMonitorService : Service() {
 
     private fun checkForegroundApp() {
         val pkgTiVoGuess = "com.tivostream.app" // fallback guess; we'll also match by substring 'tivo' in case package differs
-        val pkgChannels = "com.getchannels.dvr.app"
-
+        
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val end = System.currentTimeMillis()
         val start = end - 5000 // look back several seconds to capture recent events
@@ -169,7 +184,7 @@ class UsageMonitorService : Service() {
                 running = false
                 return
             }
-            Log.d(TAG, "No usage events in recent window — ensure Usage Access permission is granted")
+            // Quiet: skip noisy 'no usage events' log; user can check Usage Access in settings if needed.
             return
         }
 
@@ -192,7 +207,22 @@ class UsageMonitorService : Service() {
 
         val age = now - lastForegroundFirstSeen
 
-        if ((lastForegroundPackage!!.contains("tivo", true) || lastForegroundPackage == pkgTiVoGuess) && lastForegroundPackage != pkgChannels) {
+        val ownPkg = packageName
+
+        if ((lastForegroundPackage!!.contains("tivo", true) || lastForegroundPackage == pkgTiVoGuess) && lastForegroundPackage != TARGET_PKG) {
+            // Exclude our own package from being treated as 'TiVo' so opening our config UI
+            // doesn't trigger an automatic Channels launch.
+            if (lastForegroundPackage == ownPkg) {
+                Log.d(TAG, "Foreground package is our own package ($ownPkg) — do not auto-launch Google TV")
+                cancelScheduledLaunch()
+                return
+            }
+            // If the configuration UI is active, don't schedule or perform automated launches.
+            if (isLaunchSuppressed()) {
+                Log.d(TAG, "Auto-launch suppressed because configuration UI is active; skipping scheduled launch")
+                cancelScheduledLaunch()
+                return
+            }
             // Use a scheduled delayed launch so the foreground package must remain TiVo for PERSISTENCE_MS
             if (now - lastLaunchTime < LAUNCH_COOLDOWN_MS) {
                 Log.d(TAG, "Detected TiVo foreground but in cooldown (${now - lastLaunchTime}ms) — skipping launch")
@@ -207,7 +237,7 @@ class UsageMonitorService : Service() {
 
             // schedule a launch to run after PERSISTENCE_MS (or sooner if already older)
             val delay = if (age >= PERSISTENCE_MS) 0L else (PERSISTENCE_MS - age)
-            Log.d(TAG, "Scheduling Channels launch for $lastForegroundPackage in ${delay}ms")
+            Log.d(TAG, "Scheduling Google TV launch for $lastForegroundPackage in ${delay}ms")
             scheduledForPackage = lastForegroundPackage
             scheduledLaunchRunnable = Runnable {
                 try {
@@ -222,12 +252,12 @@ class UsageMonitorService : Service() {
                         Log.d(TAG, "Scheduled launch aborted: package not stable enough (${stableAge}ms)")
                         return@Runnable
                     }
-                    Log.i(TAG, "Scheduled launch: Detected TiVo foreground package: $lastForegroundPackage (stable ${stableAge}ms) — launching Channels DVR")
-                    val launched = launchChannelsDvr()
+                    Log.i(TAG, "Scheduled launch: Detected TiVo foreground package: $lastForegroundPackage (stable ${stableAge}ms) — launching Google TV")
+                    val launched = launchTargetApp()
                     if (launched) {
                         lastLaunchTime = System.currentTimeMillis()
                     } else {
-                        Log.w(TAG, "Scheduled launch attempted but launchChannelsDvr() returned false")
+                        Log.w(TAG, "Scheduled launch attempted but launchTargetApp() returned false")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in scheduled launch", e)
@@ -240,9 +270,9 @@ class UsageMonitorService : Service() {
             handler.postDelayed(scheduledLaunchRunnable!!, delay)
 
         } else {
-            // Not a TiVo package (or it's Channels) — reset state appropriately
-            if (lastForegroundPackage == pkgChannels) {
-                // If Channels is foreground, reset lastLaunchTime to avoid blocking
+            // Not a TiVo package (or it's the target) — reset state appropriately
+            if (lastForegroundPackage == TARGET_PKG) {
+                // If target is foreground, reset lastLaunchTime to avoid blocking
                 lastLaunchTime = 0L
             }
             // If package changed away from TiVo, cancel any scheduled launch
@@ -263,24 +293,23 @@ class UsageMonitorService : Service() {
         }
     }
 
-    private fun launchChannelsDvr(): Boolean {
-        val pkg = "com.getchannels.dvr.app"
+    private fun launchTargetApp(): Boolean {
         try {
             val pm = packageManager
-            val launch = pm.getLaunchIntentForPackage(pkg)
+            val launch = pm.getLaunchIntentForPackage(TARGET_PKG)
             if (launch != null) {
                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 startActivity(launch)
                 return true
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch Channels DVR package", e)
+            Log.e(TAG, "Failed to launch target package $TARGET_PKG", e)
         }
 
         // fallback: open Play Store / web if not installed
         try {
             val market = Intent(Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("market://details?id=$pkg")
+                data = android.net.Uri.parse("market://details?id=$TARGET_PKG")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(market)
@@ -291,13 +320,13 @@ class UsageMonitorService : Service() {
 
         try {
             val web = Intent(Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
+                data = android.net.Uri.parse("https://play.google.com/store/apps/details?id=$TARGET_PKG")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(web)
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to open Play Store web page for Channels DVR", e)
+            Log.e(TAG, "Failed to open Play Store web page for $TARGET_PKG", e)
         }
 
         return false

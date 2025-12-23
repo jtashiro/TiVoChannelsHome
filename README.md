@@ -1,11 +1,14 @@
 TiVo Channels Home — README
 
+This app redirects the TiVo Stream 4K remote's HOME, TV, and GUIDE buttons to launch Channels DVR (or another launcher of your choice), effectively replacing the default TiVo experience.
+
 What I changed
-- `TiVoButtonService.kt`: intercepts HOME/TV/GUIDE key events and launches Channels DVR. Uses explicit activity -> package manager -> Play Store -> Play Store web fallback.
+- `TiVoButtonService.kt`: intercepts HOME/TV/GUIDE key events and launches Channels DVR (`com.getchannels.dvr.app`). Uses explicit activity -> package manager -> Play Store -> Play Store web fallback.
+- `UsageMonitorService.kt`: monitors foreground app usage and redirects the "TiVo Stream" app (or similar OEM launchers) to Channels DVR automatically if it appears on screen.
 - `accessibility_config.xml`: requests key event filtering and sets flags for key-event-only behavior.
-- `AccessibilitySettingsActivity.kt`: convenience Activity that opens Android Accessibility Settings so users can enable the accessibility service.
-- `MainActivity.kt`: attempts to launch Channels DVR (package-launch) and falls back to opening the Accessibility Settings activity.
-- `AndroidManifest.xml`: added `AccessibilitySettingsActivity` entry.
+- `AccessibilitySettingsActivity.kt`: convenience Activity that opens Android Accessibility Settings so users can enable the accessibility service, and allows launching Channels DVR directly for testing.
+- `MainActivity.kt`: attempts to launch Channels DVR and falls back to opening the Accessibility Settings activity.
+- `AndroidManifest.xml`: added `AccessibilitySettingsActivity` entry and required permissions.
 
 How to test on a device/emulator
 1. Build & install the app (recommended on a real device or Android TV where you can enable Accessibility services):
@@ -18,16 +21,20 @@ How to test on a device/emulator
 If the Gradle build fails with an error mentioning a Java version like `25.0.1`, see the "Troubleshooting: Java / Gradle build" section below.
 
 2. Enable the Accessibility service:
-- Settings → Accessibility → Installed services → "TiVo Channels Home" → Enable.
+- Settings → Accessibility → Installed services → "TiVo Channels Button Service" → Enable.
 - Confirm any permission prompts to allow key event filtering.
 
-3. Watch the service logcat to see events and redirection:
+3. Grant Usage Access (optional but recommended for auto-redirection):
+- Settings → Apps → Special app access → Usage access → "TiVo Channels Home" → Enable.
+- Or tap the persistent notification to open the settings.
+
+4. Watch the service logcat to see events and redirection:
 
 ```bash
-adb logcat -s TiVoButtonService
+adb logcat -s TiVoButtonService UsageMonitorService
 ```
 
-4. Press the TiVo remote HOME or GUIDE button. Expected behavior:
+5. Press the TiVo remote HOME or GUIDE button. Expected behavior:
 - The app will try to open Channels DVR (package `com.getchannels.dvr.app`).
 - If Channels DVR is not installed it will open the Play Store to the app page (or a web fallback if Play Store is not available).
 - If Channels DVR cannot be launched, `MainActivity` will open the Accessibility settings to help enable the service.
@@ -55,15 +62,9 @@ export JAVA_HOME=$(/usr/libexec/java_home -v17)
 
 Notes & privacy
 - This app uses an AccessibilityService to receive hardware key events. That requires explicit user consent through the Accessibility settings. The service should only be enabled with informed consent.
+- It also uses Usage Access to monitor which app is in the foreground to redirect away from the default TiVo launcher.
 
 Next improvements you might want
-- Add a small in-app UI to explain why the Accessibility permission is needed and to deep-link into the Accessibility settings (we added `AccessibilitySettingsActivity` for this purpose).
+- Add a small in-app UI to explain why the Accessibility permission is needed.
 - Add additional keycodes if your remote uses different codes (e.g., `KEYCODE_TV_HOME`) or map remote-specific buttons.
 - Optionally, show a notification or settings toggle in-app to let the user enable/disable the redirection behavior.
-
-If you'd like, I can: (pick one)
-- Add the package-manager fallback to `MainActivity` (already done).
-- Add an in-app settings screen to toggle interception on/off.
-- Add unit tests and simple instrumentation tests (would need an emulator/device to run).
-
-
