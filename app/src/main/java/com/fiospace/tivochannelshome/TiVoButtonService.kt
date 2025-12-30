@@ -36,13 +36,22 @@ class TiVoButtonService : AccessibilityService() {
         Log.i(TAG, "Accessibility service connected")
         try {
             serviceInfo = (serviceInfo ?: AccessibilityServiceInfo()).apply {
-                eventTypes = AccessibilityEvent.TYPES_ALL_MASK
-                feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-                flags = flags or
-                        AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
-                        AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                // Limit the service to only listen to this app's own events. 
+                // This prevents the system (and other apps like Google TV) from thinking we are 
+                // actively exploring/reading their UI, which fixes the "single click acts as long press" issue.
+                packageNames = arrayOf(packageName)
+                
+                // We don't need any standard events.
+                eventTypes = 0
+                
+                // Setting feedbackType to 0 (or not setting it) effectively disables feedback, which
+                // avoids triggering accessibility behavior in other apps.
+                feedbackType = 0
+                
+                // IMPORTANT: Overwrite flags instead of OR-ing to ensure we don't accidentally enable touch exploration.
+                flags = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
             }
-            Log.i(TAG, "Requested key event and window content filtering")
+            Log.i(TAG, "Requested key event filtering with restricted package scope")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to set serviceInfo flags", e)
         }
@@ -52,47 +61,12 @@ class TiVoButtonService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         Log.d(TAG, "onKeyEvent: action=${event.action}, keyCode=${event.keyCode}, scanCode=${event.scanCode}")
 
-        return when {
-            // Map ESCAPE to perform a global BACK action.
-            event.keyCode == KeyEvent.KEYCODE_ESCAPE -> {
-                if (event.action == KeyEvent.ACTION_UP) {
-                    Log.i(TAG, "Escape key up, performing GLOBAL_ACTION_BACK.")
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                }
-                true // Consume both down and up events.
-            }
-
-            // Map PAUSE/BREAK button to clicking the on-screen Play/Pause UI.
-            event.keyCode == KeyEvent.KEYCODE_BREAK || event.scanCode == 119 -> {
-                handlePauseKeyPress(event)
-                true // Always consume this key.
-            }
-
-            // Handle app launching shortcuts on key down.
-            event.action == KeyEvent.ACTION_DOWN -> handleLaunchShortcuts(event)
-
-            // For all other keys and actions, do not consume the event.
-            else -> false
+        // We only care about key down events for launching apps.
+        if (event.action != KeyEvent.ACTION_DOWN) {
+            return false
         }
-    }
 
-    private fun handlePauseKeyPress(event: KeyEvent) {
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            if (isBreakPressed || System.currentTimeMillis() - lastBreakEmitTime < DEBOUNCE_MS) {
-                return // Debounce or ignore repeats
-            }
-            isBreakPressed = true
-            lastBreakEmitTime = System.currentTimeMillis()
-
-            Log.i(TAG, "PAUSE/BREAK detected, attempting to click on-screen Play/Pause button.")
-            if (findAndClickNodeByText("pause", "play")) {
-                Log.i(TAG, "Successfully clicked Play/Pause button.")
-            } else {
-                Log.w(TAG, "Failed to find and click Play/Pause button.")
-            }
-        } else if (event.action == KeyEvent.ACTION_UP) {
-            isBreakPressed = false
-        }
+        return handleLaunchShortcuts(event)
     }
 
     private fun handleLaunchShortcuts(event: KeyEvent): Boolean {
@@ -105,64 +79,28 @@ class TiVoButtonService : AccessibilityService() {
             KeyEvent.KEYCODE_TV -> {
                 Log.i(TAG, "TV button pressed, launching Channels live player.")
                 launchChannelsPlayerLive()
+                true
             }
             KeyEvent.KEYCODE_GUIDE -> {
                 Log.i(TAG, "GUIDE button pressed, launching Channels guide.")
                 launchChannelsMainActivity(extras = mapOf("tab" to "guide"))
+                true
             }
-            KeyEvent.KEYCODE_DVR -> launchDvrAction()
+            KeyEvent.KEYCODE_DVR -> {
+                launchDvrAction()
+                true
+            }
             KeyEvent.KEYCODE_HOME -> {
                 Log.i(TAG, "HOME button pressed, launching Channels DVR.")
                 launchTargetApp()
                 true
             }
-            KeyEvent.KEYCODE_UNKNOWN -> if (event.scanCode == 240) launchDvrAction() else false
+            KeyEvent.KEYCODE_UNKNOWN -> if (event.scanCode == 240) {
+                launchDvrAction()
+                true
+            } else false
             else -> false
         }
-    }
-
-    private fun findAndClickNodeByText(vararg keywords: String): Boolean {
-        val root = rootInActiveWindow ?: run {
-            Log.w(TAG, "findAndClickNodeByText: rootInActiveWindow is null.")
-            return false
-        }
-
-        val queue: java.util.Queue<AccessibilityNodeInfo> = ArrayDeque()
-        queue.add(root)
-
-        try {
-            while (queue.isNotEmpty()) {
-                val node = queue.poll() ?: continue
-
-                val matches = keywords.any { keyword ->
-                    node.contentDescription?.contains(keyword, ignoreCase = true) == true ||
-                            node.text?.contains(keyword, ignoreCase = true) == true
-                }
-
-                if (matches) {
-                    var clickableNode: AccessibilityNodeInfo? = node
-                    while (clickableNode != null && !clickableNode.isClickable) {
-                        clickableNode = clickableNode.parent
-                    }
-
-                    if (clickableNode != null) {
-                        Log.i(TAG, "Found clickable node for '${keywords.joinToString()}': ${clickableNode.className}")
-                        return clickableNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    } else {
-                        Log.w(TAG, "Found a node with matching text but it was not clickable: ${node.text}")
-                    }
-                }
-
-                for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { queue.add(it) }
-                }
-            }
-        } finally {
-            root.recycle()
-        }
-
-        Log.w(TAG, "Could not find any clickable node for: ${keywords.joinToString()}")
-        return false
     }
 
     private fun launchChannelsMainActivity(extras: Map<String, String>? = null): Boolean {
@@ -252,7 +190,11 @@ class TiVoButtonService : AccessibilityService() {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // This method is called for all events that match the eventTypes, but we are only
+        // interested in key events, which are handled by onKeyEvent. So we can leave this empty.
+        // We now request only TYPE_VIEW_KEY_EVENT, so this will only be called for key events.
+    }
 
     override fun onInterrupt() {}
 
