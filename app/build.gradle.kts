@@ -13,8 +13,8 @@ android {
         applicationId = "com.fiospace.tivochannelshome"
         minSdk = 21
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 5
+        versionName = "1.4"
 
     }
 

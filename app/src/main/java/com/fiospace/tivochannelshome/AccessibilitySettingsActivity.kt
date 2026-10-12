@@ -9,10 +9,16 @@ import android.widget.Toast
 import android.app.AlertDialog
 import android.content.DialogInterface
 import android.net.Uri
+import android.text.InputType
 import android.util.Log
+import android.widget.EditText
+import org.json.JSONArray
 
 class AccessibilitySettingsActivity : Activity() {
     private val PREFS_NAME = "tivo_prefs"
+
+    // True while the Live-button channel picker (which replaces this dialog) is showing, so dismissing the menu does not finish the activity.
+    private var pickerActive = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +36,7 @@ class AccessibilitySettingsActivity : Activity() {
             "Open Usage Access Settings",
             "Uninstall OEM Apps (best-effort)",
             "Launch Channels Live",
+            "Live button channel: ${LiveChannelPrefs.get(this) ?: "none (opens live player)"}",
             "Close"
         )
 
@@ -133,16 +140,96 @@ class AccessibilitySettingsActivity : Activity() {
                             Toast.makeText(this, "Failed to launch Channels Live", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    3 -> { /* Close */ }
+                    3 -> { // Live button channel
+                        pickerActive = true
+                        showLiveChannelPicker()
+                    }
+                    4 -> { /* Close */ }
                 }
             }
-            .setOnDismissListener { finish() }
+            .setOnDismissListener { if (!pickerActive) finish() }
 
         // Show the dialog immediately; it will finish the activity when dismissed
         builder.show()
 
         // Ensure suppression flag is cleared when the activity finishes (onDismiss will call finish())
         // but also clear in onDestroy as a safety net.
+    }
+
+    /** Loads the DVR's channel list and lets the user pick the channel the remote's LIVE button tunes; falls back to typing a number if the DVR cannot be reached. */
+    private fun showLiveChannelPicker() {
+        val host = LiveChannelPrefs.dvrHost(this)
+        val loading = AlertDialog.Builder(this)
+            .setTitle("Live button channel")
+            .setMessage("Loading channels from $host …")
+            .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
+        Thread {
+            val channels = loadDvrChannels(host)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                loading.dismiss()
+                if (channels.isNullOrEmpty()) showManualChannelEntry(host) else showChannelList(channels)
+            }
+        }.start()
+    }
+
+    /** (number, name) for every channel on the DVR, in channel order, or null when the DVR does not answer. */
+    private fun loadDvrChannels(host: String): List<Pair<String, String>>? {
+        val body = ChannelsHttp.request(host, LiveChannelPrefs.DVR_PORT, "GET", "/api/v1/channels", readTimeoutMs = 15_000) ?: return null
+        return try {
+            val arr = JSONArray(body)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val number = o.optString("number").trim()
+                if (number.isEmpty()) null else Pair(number, o.optString("name").trim())
+            }.distinctBy { it.first }.sortedBy { it.first.toDoubleOrNull() ?: Double.MAX_VALUE }
+        } catch (e: Exception) {
+            Log.w("AccessibilitySettings", "Could not parse the DVR channel list", e)
+            null
+        }
+    }
+
+    private fun showChannelList(channels: List<Pair<String, String>>) {
+        val current = LiveChannelPrefs.get(this)
+        val labels = ArrayList<String>()
+        labels.add((if (current == null) "✓ " else "") + "None — just open the live player")
+        channels.forEach { (number, name) -> labels.add((if (number == current) "✓ " else "") + "$number  $name") }
+        AlertDialog.Builder(this)
+            .setTitle("Live button channel")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val chosen = if (which == 0) null else channels[which - 1].first
+                LiveChannelPrefs.set(this, chosen)
+                Toast.makeText(this, "Live button: ${chosen ?: "opens the live player"}", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .setOnDismissListener { finish() }
+            .show()
+    }
+
+    private fun showManualChannelEntry(host: String) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            hint = "Channel number, e.g. 6073"
+            LiveChannelPrefs.get(this@AccessibilitySettingsActivity)?.let { setText(it) }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Live button channel")
+            .setMessage("Could not load the channel list from $host. Type a channel number (blank = just open the live player).")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isEmpty() || LiveChannelPrefs.isValid(text)) {
+                    LiveChannelPrefs.set(this, text)
+                    Toast.makeText(this, "Live button: ${text.ifEmpty { "opens the live player" }}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Not a channel number: $text", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .setOnDismissListener { finish() }
+            .show()
     }
 
     override fun onDestroy() {

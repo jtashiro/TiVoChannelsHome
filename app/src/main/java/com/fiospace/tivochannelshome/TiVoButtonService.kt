@@ -9,13 +9,16 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
+import org.json.JSONObject
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicBoolean
 
 class TiVoButtonService : AccessibilityService() {
 
@@ -34,8 +37,15 @@ class TiVoButtonService : AccessibilityService() {
         // Settings.Global flag, 1 (default) = swallow that key, 0 = let it through. Set from the host with
         // `adb shell settings put global tivo_swallow_power 0` (the Home Assistant dashboard switch does this).
         private const val SWALLOW_POWER_SETTING = "tivo_swallow_power"
+
+        // The remote's LIVE button arrives as keyCode 5124, scanCode 240 (seen in logcat; the service receives it, the system does not consume it first).
+        private const val LIVE_KEYCODE = 5124
+        private const val LIVE_SCAN_CODE = 240
+        // The Channels app's own HTTP API (answers on the device itself).
+        private const val CHANNELS_API_PORT = 57000
     }
 
+    private val liveBusy = AtomicBoolean(false)
     private var isBreakPressed = false
     private var lastBreakEmitTime = 0L
 
@@ -74,6 +84,14 @@ class TiVoButtonService : AccessibilityService() {
             return true
         }
 
+        // LIVE button: tune the configured channel. Swallow DOWN and UP so nothing else reacts to it.
+        if (event.keyCode == LIVE_KEYCODE && event.scanCode == LIVE_SCAN_CODE) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                handleLiveButton()
+            }
+            return true
+        }
+
         // We only care about key down events for launching apps.
         if (event.action != KeyEvent.ACTION_DOWN) {
             return false
@@ -87,6 +105,116 @@ class TiVoButtonService : AccessibilityService() {
     } catch (e: Exception) {
         true
     }
+
+    /** The channel the LIVE button tunes: chosen in the app's Configuration panel (see [LiveChannelPrefs]); null = none chosen. */
+    private fun liveChannel(): String? = LiveChannelPrefs.get(this)
+
+    /** LIVE button: tune [liveChannel] if one is set (everything runs on this TV, no host involved), else just open the live player. */
+    private fun handleLiveButton() {
+        val ch = liveChannel()
+        if (ch == null) {
+            Log.i(TAG, "LIVE button pressed, no Live channel chosen: launching Channels live player.")
+            launchChannelsPlayerLive()
+            return
+        }
+        if (!liveBusy.compareAndSet(false, true)) {
+            Log.i(TAG, "LIVE button pressed, previous press still being handled: ignored")
+            return
+        }
+        Thread {
+            try {
+                tuneLive(ch)
+            } catch (e: Exception) {
+                Log.w(TAG, "LIVE button: tune of $ch failed", e)
+            } finally {
+                liveBusy.set(false)
+            }
+        }.start()
+    }
+
+    /**
+     * Channels already playing/paused: its API retunes inside that player (a deep link would start a second PlayerActivity over it).
+     * Otherwise (closed, or open on a menu, where the API answers but a tune does nothing): the deep link, which starts the app on the channel.
+     * Already playing [ch]: just bring the app to the front, do not restart the stream.
+     */
+    private fun tuneLive(ch: String) {
+        val t0 = System.currentTimeMillis()
+        val (status, current) = channelsStatus()
+        if (status == "playing" && current == ch) {
+            bringChannelsToFront()
+            Log.i(TAG, "LIVE button: already playing $ch, not re-tuned")
+            return
+        }
+        if (status == "playing" || status == "paused") {
+            Log.i(TAG, "LIVE button: tuning $ch through the Channels API")
+            if (channelsApi("POST", "/api/play/channel/$ch") != null && waitPlaying(ch, 10_000)) {
+                Log.i(TAG, "LIVE button: playing $ch via api in ${System.currentTimeMillis() - t0} ms")
+                return
+            }
+            Log.w(TAG, "LIVE button: API tune of $ch did not take, trying the deep link")
+        } else {
+            Log.i(TAG, "LIVE button: no player running (status=$status), opening Channels on $ch")
+        }
+        launchChannelsDeepLink(ch)
+        if (waitPlaying(ch, 25_000)) {
+            Log.i(TAG, "LIVE button: playing $ch via deeplink in ${System.currentTimeMillis() - t0} ms")
+        } else {
+            Log.w(TAG, "LIVE button: $ch not playing after ${System.currentTimeMillis() - t0} ms")
+        }
+    }
+
+    private fun launchChannelsDeepLink(ch: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("channels://$CHANNELS_PKG/play/channel/$ch")).apply {
+                setPackage(CHANNELS_PKG)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to open the Channels deep link for $ch", e)
+        }
+    }
+
+    /** Brings the running Channels task to the front without CLEAR_TOP, so the player keeps playing. */
+    private fun bringChannelsToFront() {
+        try {
+            val intent = (packageManager.getLaunchIntentForPackage(CHANNELS_PKG)
+                ?: packageManager.getLeanbackLaunchIntentForPackage(CHANNELS_PKG))?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            if (intent != null) startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to bring Channels to the front", e)
+        }
+    }
+
+    /** True once Channels reports "playing" on [ch] for 2 s in a row (it says "playing" as soon as a tune is requested, before the stream exists). */
+    private fun waitPlaying(ch: String, timeoutMs: Long): Boolean {
+        val end = System.currentTimeMillis() + timeoutMs
+        var since = 0L
+        while (System.currentTimeMillis() < end) {
+            val (status, current) = channelsStatus()
+            if (status == "playing" && current == ch) {
+                if (since == 0L) since = System.currentTimeMillis()
+                if (System.currentTimeMillis() - since >= 2_000) return true
+            } else {
+                since = 0L
+            }
+            Thread.sleep(250)
+        }
+        return false
+    }
+
+    /** (status, channel number) from the Channels app's API, or (null, null) when it does not answer. */
+    private fun channelsStatus(): Pair<String?, String?> {
+        val body = channelsApi("GET", "/api/status") ?: return Pair(null, null)
+        return try {
+            val json = JSONObject(body)
+            Pair(json.optString("status").ifEmpty { null }, json.optJSONObject("channel")?.optString("number")?.ifEmpty { null })
+        } catch (e: Exception) {
+            Pair(null, null)
+        }
+    }
+
+    /** Call to the Channels API on this device; returns the body, or null on any failure. */
+    private fun channelsApi(method: String, path: String): String? = ChannelsHttp.request("127.0.0.1", CHANNELS_API_PORT, method, path)
 
     private fun handleLaunchShortcuts(event: KeyEvent): Boolean {
         val launchDvrAction = {

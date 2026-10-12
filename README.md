@@ -1,13 +1,14 @@
 TiVo Channels Home — README
 
-This app redirects the TiVo Stream 4K remote's HOME, TV, and GUIDE buttons to launch Channels DVR (or another launcher of your choice), effectively replacing the default TiVo experience.
+This app redirects the TiVo Stream 4K remote's HOME, TV, GUIDE, DVR and LIVE buttons to Channels DVR (or another launcher of your choice), effectively replacing the default TiVo experience. The LIVE button tunes a channel you pick in the app.
 
 What I changed
-- `TiVoButtonService.kt`: intercepts HOME/TV/GUIDE key events and launches Channels DVR (`com.getchannels.dvr.app`). Uses explicit activity -> package manager -> Play Store -> Play Store web fallback.
+- `TiVoButtonService.kt`: intercepts HOME/TV/GUIDE/DVR key events and launches Channels DVR (`com.getchannels.dvr.app`); swallows the remote's power key; and on the LIVE key (keyCode 5124) tunes the chosen channel through the Channels app's API (or its deep link when nothing is playing).
 - `UsageMonitorService.kt`: monitors foreground app usage and redirects the "TiVo Stream" app (or similar OEM launchers) to Channels DVR automatically if it appears on screen.
 - `accessibility_config.xml`: requests key event filtering and sets flags for key-event-only behavior.
-- `AccessibilitySettingsActivity.kt`: convenience Activity that opens Android Accessibility Settings so users can enable the accessibility service, and allows launching Channels DVR directly for testing.
-- `MainActivity.kt`: attempts to launch Channels DVR and falls back to opening the Accessibility Settings activity.
+- `AccessibilitySettingsActivity.kt`: the "Configuration" dialog: Usage Access, OEM app cleanup, launch Channels Live, and the **Live button channel** picker (lists the DVR's channels, or lets you type a number).
+- `MainActivity.kt`: the app's launcher tile; it opens the Configuration dialog.
+- `ChannelsHttp.kt`: small socket HTTP helper and the stored Live channel preference.
 - `AndroidManifest.xml`: added `AccessibilitySettingsActivity` entry and required permissions.
 
 How to test on a device/emulator
@@ -34,10 +35,11 @@ If the Gradle build fails with an error mentioning a Java version like `25.0.1`,
 adb logcat -s TiVoButtonService UsageMonitorService
 ```
 
-5. Press the TiVo remote HOME or GUIDE button. Expected behavior:
+5. Press the TiVo remote HOME, GUIDE or LIVE button. Expected behavior:
 - The app will try to open Channels DVR (package `com.getchannels.dvr.app`).
 - If Channels DVR is not installed it will open the Play Store to the app page (or a web fallback if Play Store is not available).
-- If Channels DVR cannot be launched, `MainActivity` will open the Accessibility settings to help enable the service.
+- Press the LIVE button: it tunes the channel chosen under Configuration > "Live button channel" (none chosen = it opens the Channels live player).
+- Opening the app from the launcher shows the Configuration dialog; "Launch Channels Live" there opens Channels.
 
 Troubleshooting: Java / Gradle build error ("25.0.1")
 - If Gradle fails during script compilation with an exception about `JavaVersion.parse` or showing a number like `25.0.1`, this usually means your system JDK is a very new/unsupported version (e.g., JDK 25) and the Kotlin/Gradle plugin in this project doesn't handle that version string.

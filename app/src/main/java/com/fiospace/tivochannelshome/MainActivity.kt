@@ -18,24 +18,14 @@ class MainActivity : Activity() {
             Log.w("TiVoChannelsHome", "Failed to start UsageMonitorService", e)
         }
 
-        val pkg = "com.getchannels.dvr.app"
+        // The app's tile opens the Configuration dialog (Live button channel, usage access, ...). Channels itself is reached
+        // through the remote's buttons (HOME / GUIDE / DVR / LIVE) and its own tile, and "Launch Channels Live" is in the dialog.
         try {
-            // Try package launch intent first (more robust)
-            val pm = packageManager
-            val launch = pm.getLaunchIntentForPackage(pkg)
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                startActivity(launch)
-            } else {
-                // If Channels not installed or no launch intent, open Accessibility settings to let user enable service
-                Log.i("TiVoChannelsHome", "Channels DVR not installed or no launch intent — opening Accessibility Settings")
-                val settings = Intent(this, AccessibilitySettingsActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(settings)
-            }
+            startActivity(Intent(this, AccessibilitySettingsActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
         } catch (e: Exception) {
-            Log.e("TiVoChannelsHome", "Failed to launch Channels DVR or open settings", e)
+            Log.e("TiVoChannelsHome", "Failed to open the Configuration dialog", e)
         }
 
         finish()

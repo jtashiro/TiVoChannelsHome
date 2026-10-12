@@ -4,8 +4,10 @@ On-device Android TV app that turns a TiVo Stream 4K into a "Channels DVR applia
 The TVs run Android 12 (SDK 31; TiVo Stream 4K, Amlogic). One client is a Chromecast with Google TV (Android 14).
 
 ## What lives where
-- `TiVoButtonService.kt` - AccessibilityService that filters the TiVo remote's keys and launches Channels (`com.getchannels.dvr.app`).
-- `UsageMonitorService.kt` - foreground service that sends the TiVo UI back to Channels. `MainActivity`/`AccessibilitySettingsActivity`/`UsageAccessActivity` - helpers.
+- `TiVoButtonService.kt` - AccessibilityService that filters the TiVo remote's keys: launches Channels (`com.getchannels.dvr.app`) for HOME/GUIDE/DVR, swallows the power key, and tunes a channel on the LIVE key.
+- `AccessibilitySettingsActivity.kt` - the "TiVo Channels Home - Configuration" dialog (Usage Access, OEM cleanup, Launch Channels Live, **Live button channel** picker). `MainActivity` (the app's tile) just opens this dialog; it no longer launches Channels.
+- `ChannelsHttp.kt` - socket HTTP helper (no cleartext config needed) + `LiveChannelPrefs` (the chosen Live channel, in `tivo_prefs`).
+- `UsageMonitorService.kt` - foreground service that sends the TiVo UI back to Channels. `UsageAccessActivity` - helper.
 - `provisioning/scripts/provision_tivo.sh`, `scripts/uninstall_oem_packages.sh` - strip OEM apps, install a Google TV launcher, enable the service.
 - `app/build.gradle.kts` - NOTE: `assembleDebug` is `finalizedBy("installDebug")` and then `uninstallOemApps` removes ~14 packages (incl. `com.netflix.ninja`,
   Amazon, Sling, Plex) with `pm uninstall --user 0`. It acts on whatever device adb selects. **Always `export ANDROID_SERIAL=<ip>:5555` first.**
@@ -30,10 +32,11 @@ Cord-cut: Channels DVR on dvr.local (192.168.1.61, all TVs use it; a second DVR 
 - The TiVo Remote is input device "TiVo Remote", key layout `/vendor/usr/keylayout/Vendor_0471_Product_1207.kl` (read-only). It has `key 116 MEDIA_PLAY_PAUSE`
   (Generic.kl would make 116 = POWER). So the remote's **power button arrives as keyCode 85, scanCode 116** and pauses/resumes whatever is playing.
 - `onKeyEvent` sees every remote key before the foreground app. Returning `true` swallows it (do both DOWN and UP). Seen so far:
-  DVR=173/scan 240, GUIDE=172/scan 362, two unidentified app buttons 272/scan 240 and 5124/scan 240, OK=23/353, arrows 19-22, power=85/116.
+  DVR=173/scan 240, GUIDE=172/scan 362, **LIVE=5124/scan 240**, one unidentified app button 272/scan 240, OK=23/353, arrows 19-22, power=85/116.
 - The **Netflix button never reaches the service**: the system handles it first (`WindowManager: netflix key do one touch play`, then
-  `START act=com.netflix.action.NETFLIX_KEY_START pkg=com.netflix.ninja`, `ActivityNotFoundException` when Netflix is absent). It cannot be remapped from the app; the host
-  service `tivo_powerkey.py` watches that log line and opens Channels on a per-TV channel instead.
+  `START act=com.netflix.action.NETFLIX_KEY_START pkg=com.netflix.ninja`, `ActivityNotFoundException` when Netflix is absent). It cannot be remapped from the app. It is **left to the real
+  Netflix app** (TVs that have it launch it; the host service `tivo_powerkey.py` no longer touches it - an earlier host hook that opened Channels on a channel was removed, it was confusing
+  and its deep-link tune was unreliable).
 - Android 11+ package visibility: without `<queries><package android:name="com.getchannels.dvr.app"/>` (now in the manifest) `getLaunchIntentForPackage` returned null
   ("Launch intent not found") and GUIDE/DVR/HOME did nothing. Channels has LAUNCHER and LEANBACK_LAUNCHER activities.
 - Channels resumes live TV (its own `PlayerActivity`) on launch, so the DVR button lands on live TV even though the `tab=dvr_library` extra switches the sidebar.
@@ -43,15 +46,28 @@ Cord-cut: Channels DVR on dvr.local (192.168.1.61, all TVs use it; a second DVR 
 dashboard switch ("TiVo remote buttons"). The IR power signal to the TV is separate and unaffected. If the app is not rebuilt on a TV, the host service undoes the pause with an
 explicit play/pause key instead. Keep the `Log.d(... onKeyEvent ...)` line: the host service reads it from logcat (`TiVoButtonService:D`).
 
+## LIVE button (version 1.2+) - runs on the TV, no host involved
+`TiVoButtonService.onKeyEvent` handles keyCode 5124 / scanCode 240: swallows DOWN and UP, acts on the first DOWN only. The channel is `LiveChannelPrefs.get()`: the choice made in the Configuration
+dialog ("Live button channel", fed from the DVR's `/api/v1/channels` at `LiveChannelPrefs.DEFAULT_DVR_HOST` 192.168.1.61:8089, typed entry if the DVR is unreachable), else the adb fallback
+`adb shell settings put global tivo_live_channel <n>`; none = just open the Channels live player. How it tunes (`tuneLive`): Channels API at 127.0.0.1:57000 (`POST /api/play/channel/<n>`)
+**only when the app reports `playing`/`paused`** (retunes inside the running player); otherwise the deep link `channels://com.getchannels.dvr.app/play/channel/<n>`. Reasons, measured on the devices:
+the API also answers when Channels is closed or on a menu but then a tune POST returns 200 and does nothing (cost ~16 s), and the deep link over a running player starts a second PlayerActivity
+on top of it (was followed by a spinner / "Connection lost" on channel 6073 - cause not proven). The API reports `playing` as soon as a tune is requested, so success needs 2 s of stable `playing`.
+Already playing the target: just bring Channels to the front. One press at a time. Typical: ~3 s via API, ~4 s via deep link.
+
 ## Do not break
 - `onServiceConnected` restricts `packageNames` to this app, sets `eventTypes = 0`, `feedbackType = 0`, `FLAG_REQUEST_FILTER_KEY_EVENTS` only. This fixed Google TV "single click acts as
   long press" side effects. Leave it.
 - Version convention: **bump `versionCode`/`versionName` in `app/build.gradle.kts` for every build you install.** The HA dashboard shows `v<name> (<code>) - updated <time>` and a red
-  "service off" per TV. 1.1 (2) = power-key swallow + package-visibility fix; 1.0 (1) = older builds.
+  "service off" per TV. 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
+  package-visibility fix; 1.0 (1) = older builds.
 
 ## Build, install, check (macOS)
 - `export ANDROID_SERIAL=192.168.1.137:5555` then `./gradlew :app:assembleDebug` (JDK 17; see README for the JDK 25 gradle issue). Android Studio must be allowed under
   System Settings > Privacy & Security > **Local Network** or `adb connect` fails with "No route to host" while ping works; run `adb kill-server` after granting.
+- **Installing can switch the accessibility service off** (seen on .137 and .133): `accessibility_enabled` goes back to 0 and no service is bound. After every install run
+  `adb -s $S shell settings put secure accessibility_enabled 1`, wait a few seconds and check `dumpsys accessibility | grep "label=TiVo Channels Button Service"`. The Google TV launcher also keeps
+  the old banner cached until it restarts: `adb -s $S shell am force-stop com.google.android.tvlauncher`. (Google TV's long-press tile menu cannot show app shortcuts - tried, not supported.)
 - After installing, confirm the service is still on: `adb -s $S shell settings get secure enabled_accessibility_services` (should contain `com.fiospace.tivochannelshome/...TiVoButtonService`).
 - Watch it: `adb -s $S logcat -v time -s TiVoButtonService:V WindowManager:I`. Press the remote's power button (log shows scanCode=116, playback must not change), GUIDE and DVR (Channels opens).
 - If Android Studio will not start with "Plugin 'Python Community Edition' requires plugin 'intellij.libraries.jcef'": add `PythonCore` to `disabled_plugins.txt` in
@@ -60,5 +76,6 @@ explicit play/pause key instead. Keep the `Log.d(... onKeyEvent ...)` line: the 
 ## Known gaps / ideas (not done)
 - `handleLaunchShortcuts` returns `true` even when the launch fails, so a failed launch also swallows the key.
 - Keys consumed on DOWN let the matching UP through (orphan UP); only the power key is swallowed on both.
-- Identify keys 272 and 5124 (both scan 240) and decide actions; HOME is intercepted and sent to Channels.
+- Identify key 272 (scan 240) and decide an action; HOME is intercepted and sent to Channels.
+- The LIVE channel list comes from a hard-coded DVR address (`DEFAULT_DVR_HOST`; a `dvr_host` pref overrides it, no UI for that yet).
 - Make the DVR button land on the DVR library (Channels opens the live player first).
