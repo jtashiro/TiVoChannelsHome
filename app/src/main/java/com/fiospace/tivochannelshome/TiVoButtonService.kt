@@ -104,8 +104,10 @@ class TiVoButtonService : AccessibilityService() {
         Log.d(TAG, "onKeyEvent: action=${event.action}, keyCode=${event.keyCode}, scanCode=${event.scanCode}")
 
         // Swallow the remote's power key (down AND up) so Channels never sees it as play/pause.
-        if (event.scanCode == POWER_SCAN_CODE && event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && swallowPowerKey()) {
-            return true
+        if (event.scanCode == POWER_SCAN_CODE && event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            // The key is a toggle (on and off look the same to us), so every press brings Channels to the front; if it already is, Android just resumes it.
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) bringChannelsToFront()
+            if (swallowPowerKey()) return true
         }
 
         // LIVE button: tune the configured channel. Swallow the DOWN so nothing else reacts to it, but let the UP through: TiVo's own system app
