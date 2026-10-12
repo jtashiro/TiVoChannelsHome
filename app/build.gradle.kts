@@ -22,8 +22,8 @@ android {
         applicationId = "com.fiospace.tivochannelshome"
         minSdk = 21
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.10"
+        versionCode = 13
+        versionName = "1.12"
 
         buildConfigField("String", "HA_HOST", "\"${localProp("ha.host")}\"")
         buildConfigField("int", "HA_PORT", localProp("ha.port", "8123").toIntOrNull()?.toString() ?: "8123")

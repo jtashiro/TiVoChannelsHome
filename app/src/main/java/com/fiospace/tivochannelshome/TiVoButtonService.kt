@@ -6,6 +6,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -76,6 +77,24 @@ class TiVoButtonService : AccessibilityService() {
         createNotification()
         // Keep the LIVE-button channel in step with Home Assistant (no-op unless ha.host / ha.live.webhook were set at build time).
         LiveSync.start(applicationContext)
+        ensureLauncherEntryEnabled()
+    }
+
+    /**
+     * On some TVs the app's launcher activity (MainActivity, the tile in Installed Apps) was found disabled - adb cannot re-enable it
+     * ("Shell cannot change component state") but the app can enable its own components. Runs every time the service starts, so it also
+     * repairs the tile after an update.
+     */
+    private fun ensureLauncherEntryEnabled() {
+        try {
+            val cn = ComponentName(this, MainActivity::class.java)
+            if (packageManager.getComponentEnabledSetting(cn) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                packageManager.setComponentEnabledSetting(cn, PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP)
+                Log.i(TAG, "re-enabled the app's launcher entry (it was disabled, so the tile was missing from Installed Apps)")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not check/enable the launcher entry", e)
+        }
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -86,12 +105,15 @@ class TiVoButtonService : AccessibilityService() {
             return true
         }
 
-        // LIVE button: tune the configured channel. Swallow DOWN and UP so nothing else reacts to it.
+        // LIVE button: tune the configured channel. Swallow the DOWN so nothing else reacts to it, but let the UP through: TiVo's own system app
+        // (com.nes.tvglobalkeyhandler) sees the key-up and ends the screensaver (Ambient mode); if the key were swallowed completely the
+        // screensaver stayed on top of Channels and the button seemed dead. (Its own action for this key, launching com.tivo.atom, is a no-op
+        // because that app is removed on these TVs.)
         if (event.keyCode == LIVE_KEYCODE && event.scanCode == LIVE_SCAN_CODE) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 handleLiveButton()
             }
-            return true
+            return event.action == KeyEvent.ACTION_DOWN
         }
 
         // We only care about key down events for launching apps.

@@ -55,6 +55,11 @@ Channels API at 127.0.0.1:57000 (`POST /api/play/channel/<n>`) **only when the a
 (cost ~16 s), and the deep link over a running player starts a second PlayerActivity on top of it (was followed by a spinner / "Connection lost" on channel 6073 - cause not proven). The API
 reports `playing` as soon as a tune is requested, so success needs 2 s of stable `playing`. Already playing the target: just bring Channels to the front. One press at a time. Typical ~3-4 s.
 
+**Screensaver (Ambient mode) rule - do not swallow the LIVE key-up.** The remote's Live key is a TiVo shortcut: TiVo's system app `com.nes.tvglobalkeyhandler` maps 5124 = `KEYCODE_NES_SHORTCUT_10`
+to `com.tivo.atom` / `com.tivo.live` (not installed on these TVs, so that part is a no-op) and, on seeing the key-up, also ends the screensaver (`SystemUtils: stop dream by a global key pressed`). The service
+therefore swallows only the DOWN and returns false for the UP. When both were swallowed the screensaver stayed on top of Channels and the button seemed dead (Channels never reached `playing`).
+With the fix: screensaver on, Live -> screensaver ends after ~0.4 s, playing in ~6.4 s (measured on .137).
+
 ### Home Assistant sync (`LiveSync.kt`, started by `TiVoButtonService.onServiceConnected`)
 HA is the source of truth, the TV keeps a local copy (works with HA down). HA side lives in the ha-docker repo (`tools/gen_tivo_dashboard.py`, deployed with `--deploy` on hp.local): per TV an
 `input_text.tivo_<ip>_live_channel`, a "Live button tunes to:" pick on its dashboard tab (first entry "(none - just open the live player)"), an automation that publishes
@@ -71,11 +76,16 @@ HA is the source of truth, the TV keeps a local copy (works with HA down). HA si
   change the flag (`GSERVICES_OVERRIDE` broadcast is refused: Permission Denial, uid 2000). A toast was not wanted. The Channels app's own `POST http://<tv>:57000/api/notify`
   (`{"title","message","icon"}`) does draw a top-right banner, but only while Channels is playing; it was tested (works) and not built in.
 
+## App tile (launcher entry) can be found disabled
+On .98, .115 and .192 `MainActivity` (the Installed Apps tile) was found in `disabledComponents` (cause unknown - none of our scripts/code does it); the system then does not resolve the
+LEANBACK_LAUNCHER entry and the tile is missing. adb cannot fix it (`pm enable`/`default-state`: "Shell cannot change component state"), but the app can: `TiVoButtonService.ensureLauncherEntryEnabled()`
+re-enables it every time the service starts (so also after an update). Check: `adb -s $S shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER -p com.fiospace.tivochannelshome`.
+
 ## Do not break
 - `onServiceConnected` restricts `packageNames` to this app, sets `eventTypes = 0`, `feedbackType = 0`, `FLAG_REQUEST_FILTER_KEY_EVENTS` only. This fixed Google TV "single click acts as
   long press" side effects. Leave it.
 - Version convention: **bump `versionCode`/`versionName` in `app/build.gradle.kts` for every build you install.** The HA dashboard shows `v<name> (<code>) - updated <time>` and a red
-  "service off" per TV. 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
+  "service off" per TV. 1.12 (13) = re-enables a disabled launcher tile; 1.11 (12) = Live key-up passes through (ends the screensaver); 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
   package-visibility fix; 1.0 (1) = older builds.
 
 ## Build, install, check (macOS)
