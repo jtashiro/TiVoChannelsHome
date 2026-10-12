@@ -37,6 +37,7 @@ class AccessibilitySettingsActivity : Activity() {
             "Uninstall OEM Apps (best-effort)",
             "Launch Channels Live",
             "Live button channel: ${LiveChannelPrefs.get(this) ?: "none (opens live player)"}${if (LiveChannelPrefs.pendingSince(this) != 0L) "  (syncing with Home Assistant…)" else ""}",
+            "Restore TV to last state on power on: ${if (ResumePrefs.isEnabled(this)) "Yes" else "No"}  (select to change)",
             "Close"
         )
 
@@ -144,7 +145,12 @@ class AccessibilitySettingsActivity : Activity() {
                         pickerActive = true
                         showLiveChannelPicker()
                     }
-                    4 -> { /* Close */ }
+                    4 -> { // Restore TV to last state
+                        val on = !ResumePrefs.isEnabled(this)
+                        ResumePrefs.setEnabled(this, on)
+                        Toast.makeText(this, "Restore TV to last state: ${if (on) "Yes" else "No"}", Toast.LENGTH_SHORT).show()
+                    }
+                    5 -> { /* Close */ }
                 }
             }
             .setOnDismissListener { if (!pickerActive) finish() }

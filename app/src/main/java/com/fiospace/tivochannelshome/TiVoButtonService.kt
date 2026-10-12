@@ -82,6 +82,7 @@ class TiVoButtonService : AccessibilityService() {
         LiveSync.start(applicationContext)
         ensureLauncherEntryEnabled()
         registerScreenOnReceiver()
+        startSnapshotPoll()
     }
 
     private var screenOnReceiver: android.content.BroadcastReceiver? = null
@@ -96,19 +97,129 @@ class TiVoButtonService : AccessibilityService() {
         if (screenOnReceiver != null) return
         val r = object : android.content.BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == Intent.ACTION_SCREEN_OFF) {
+                    Log.i(TAG, "Screen off (TV went to sleep)")
+                    handlePowerOff()
+                    return
+                }
                 val now = System.currentTimeMillis()
                 if (now - lastScreenOnLaunch < 5_000) return
                 lastScreenOnLaunch = now
-                Log.i(TAG, "Screen on (TV woke): opening Channels on the Live channel")
-                handleLiveButton()
+                Log.i(TAG, "Screen on (TV woke)")
+                handlePowerOn()
             }
         }
         try {
-            registerReceiver(r, android.content.IntentFilter(Intent.ACTION_SCREEN_ON))
+            registerReceiver(r, android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            })
             screenOnReceiver = r
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register screen-on receiver", e)
         }
+    }
+
+    @Volatile private var lastSnap: ResumeSnapshot? = null
+    @Volatile private var pollRunning = false
+
+    /** What Channels is playing right now (live channel or recording), or null. */
+    private fun snapshotNow(): ResumeSnapshot? = ResumeSnapshot.fromStatus(channelsApi("GET", "/api/status"))
+
+    /**
+     * Channels' status turns to "stopped" within ~0.4 s of the TV going to sleep (measured on .102), which is before or around the screen-off
+     * broadcast; so while the screen is on, remember what was playing every few seconds.
+     */
+    private fun startSnapshotPoll() {
+        if (pollRunning) return
+        pollRunning = true
+        Thread {
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            while (pollRunning) {
+                try {
+                    if (pm.isInteractive && ResumePrefs.isEnabled(this)) {
+                        val s = snapshotNow()
+                        if (pm.isInteractive) lastSnap = s   // a reply that raced the screen turning off is not trusted
+                    }
+                    Thread.sleep(4_000)
+                } catch (e: InterruptedException) {
+                    return@Thread
+                } catch (e: Exception) {
+                    Log.w(TAG, "Snapshot poll failed", e)
+                }
+            }
+        }.start()
+    }
+
+    /** True once Channels has been "playing" [s] (the channel, or for a recording just playing) for 2 s in a row. */
+    private fun waitPlayingSnap(s: ResumeSnapshot, timeoutMs: Long): Boolean {
+        if (s.kind == ResumeSnapshot.LIVE) return waitPlaying(s.id, timeoutMs)
+        val end = System.currentTimeMillis() + timeoutMs
+        var since = 0L
+        while (System.currentTimeMillis() < end) {
+            if (channelsStatus().first == "playing") {
+                if (since == 0L) since = System.currentTimeMillis()
+                if (System.currentTimeMillis() - since >= 2_000) return true
+            } else since = 0L
+            Thread.sleep(500)
+        }
+        return false
+    }
+
+    /** Power off (screen off, or the first press of the TiVo power key): remember what Channels was playing, for the next power on. */
+    private fun handlePowerOff() {
+        if (!ResumePrefs.isEnabled(this)) return
+        Thread {
+            try {
+                val snap = snapshotNow() ?: lastSnap?.takeIf { System.currentTimeMillis() - it.at <= 10_000 }
+                if (snap != null) {
+                    ResumePrefs.save(this, snap)
+                    Log.i(TAG, "Power off: remembered ${snap.kind} ${snap.id}")
+                } else {
+                    ResumePrefs.clear(this)
+                    Log.i(TAG, "Power off: nothing was playing")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Power off: could not save the state", e)
+            }
+        }.start()
+    }
+
+    /** Power on: resume what was playing at power off (when "Restore TV to last state" is on), else do what the LIVE button does. */
+    private fun handlePowerOn() {
+        val snap = if (ResumePrefs.isEnabled(this)) ResumePrefs.take(this) else null
+        if (snap == null) {
+            handleLiveButton()
+            return
+        }
+        if (!liveBusy.compareAndSet(false, true)) {
+            Log.i(TAG, "Power on: previous press still being handled: ignored")
+            return
+        }
+        Thread {
+            try {
+                Log.i(TAG, "Power on: resuming ${snap.kind} ${snap.id}")
+                if (snap.kind == ResumeSnapshot.LIVE) {
+                    tuneLive(snap.id)
+                } else {
+                    val (status, _) = channelsStatus()
+                    if (status == "playing" || status == "paused") channelsApi("POST", "/api/play/recording/${snap.id}")
+                    else launchChannelsDeepLink(snap.id, "recording")
+                }
+                // Right after a wake Channels' status can still say "playing" for the player that is being torn down (seen on .102: "already
+                // playing 6007" and then it stopped), so check again and fall back to the deep link, which starts the app on it.
+                Thread.sleep(3_000)
+                if (!waitPlayingSnap(snap, 8_000)) {
+                    Log.w(TAG, "Power on: ${snap.kind} ${snap.id} not playing, opening it with the deep link")
+                    launchChannelsDeepLink(snap.id, if (snap.kind == ResumeSnapshot.LIVE) "channel" else "recording")
+                    waitPlayingSnap(snap, 25_000)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Power on: resume of ${snap.kind} ${snap.id} failed", e)
+            } finally {
+                liveBusy.set(false)
+            }
+        }.start()
     }
 
     /**
@@ -133,8 +244,17 @@ class TiVoButtonService : AccessibilityService() {
 
         // Swallow the remote's power key (down AND up) so Channels never sees it as play/pause.
         if (event.scanCode == POWER_SCAN_CODE && event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-            // The key is a toggle (on and off look the same to us), so every press does what the LIVE button does: open Channels on the Live channel.
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handleLiveButton()
+            // The key is a toggle (on and off look the same to us), so the service tracks it: first press = power off (remember what Channels was
+            // playing), next press = power on (resume that, or else do what the LIVE button does).
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                if (ResumePrefs.isOff(this)) {
+                    ResumePrefs.setOff(this, false)
+                    handlePowerOn()
+                } else {
+                    ResumePrefs.setOff(this, true)
+                    handlePowerOff()
+                }
+            }
             if (swallowPowerKey()) return true
         }
 
@@ -245,9 +365,9 @@ class TiVoButtonService : AccessibilityService() {
         }
     }
 
-    private fun launchChannelsDeepLink(ch: String) {
+    private fun launchChannelsDeepLink(ch: String, kind: String = "channel") {
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("channels://$CHANNELS_PKG/play/channel/$ch")).apply {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("channels://$CHANNELS_PKG/play/$kind/$ch")).apply {
                 setPackage(CHANNELS_PKG)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
@@ -438,6 +558,7 @@ class TiVoButtonService : AccessibilityService() {
         LiveSync.stop()
         try { screenOnReceiver?.let { unregisterReceiver(it) } } catch (e: Exception) { }
         screenOnReceiver = null
+        pollRunning = false
         super.onDestroy()
     }
 }
