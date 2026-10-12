@@ -14,6 +14,12 @@
     <!-- Permission required to start foreground services (startForeground) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- Android 11+ package visibility: without this, packageManager.getLaunchIntentForPackage("com.getchannels.dvr.app")
+         returns null ("Launch intent not found") and the GUIDE / DVR / HOME buttons cannot open Channels. -->
+    <queries>
+        <package android:name="com.getchannels.dvr.app" />
+    </queries>
+
     <application
         android:label="TiVo Channels Home"
         android:icon="@mipmap/ic_launcher"

@@ -26,6 +26,14 @@ class TiVoButtonService : AccessibilityService() {
         private const val NOTIF_ID = 1001
         private const val NOTIF_CHANNEL_ID = "tivo_channels_service"
         private const val DEBOUNCE_MS = 300L
+
+        // The TiVo remote's POWER key is Linux scan code 116. The vendor key layout
+        // (/vendor/usr/keylayout/Vendor_0471_Product_1207.kl) maps it to MEDIA_PLAY_PAUSE, so every press (TV off OR on)
+        // toggled play/pause in Channels. The remote's IR power command to the TV is a separate signal and still works.
+        private const val POWER_SCAN_CODE = 116
+        // Settings.Global flag, 1 (default) = swallow that key, 0 = let it through. Set from the host with
+        // `adb shell settings put global tivo_swallow_power 0` (the Home Assistant dashboard switch does this).
+        private const val SWALLOW_POWER_SETTING = "tivo_swallow_power"
     }
 
     private var isBreakPressed = false
@@ -61,12 +69,23 @@ class TiVoButtonService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         Log.d(TAG, "onKeyEvent: action=${event.action}, keyCode=${event.keyCode}, scanCode=${event.scanCode}")
 
+        // Swallow the remote's power key (down AND up) so Channels never sees it as play/pause.
+        if (event.scanCode == POWER_SCAN_CODE && event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && swallowPowerKey()) {
+            return true
+        }
+
         // We only care about key down events for launching apps.
         if (event.action != KeyEvent.ACTION_DOWN) {
             return false
         }
 
         return handleLaunchShortcuts(event)
+    }
+
+    private fun swallowPowerKey(): Boolean = try {
+        android.provider.Settings.Global.getInt(contentResolver, SWALLOW_POWER_SETTING, 1) != 0
+    } catch (e: Exception) {
+        true
     }
 
     private fun handleLaunchShortcuts(event: KeyEvent): Boolean {
@@ -105,7 +124,8 @@ class TiVoButtonService : AccessibilityService() {
 
     private fun launchChannelsMainActivity(extras: Map<String, String>? = null): Boolean {
         return try {
-            val intent = packageManager.getLaunchIntentForPackage(CHANNELS_PKG)?.apply {
+            val intent = (packageManager.getLaunchIntentForPackage(CHANNELS_PKG)
+                ?: packageManager.getLeanbackLaunchIntentForPackage(CHANNELS_PKG))?.apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 extras?.forEach { (k, v) -> putExtra(k, v) }
             }
@@ -140,7 +160,8 @@ class TiVoButtonService : AccessibilityService() {
 
     private fun launchTargetApp(): Boolean {
         return try {
-            val intent = packageManager.getLaunchIntentForPackage(TARGET_PKG)?.apply {
+            val intent = (packageManager.getLaunchIntentForPackage(TARGET_PKG)
+                ?: packageManager.getLeanbackLaunchIntentForPackage(TARGET_PKG))?.apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             if (intent != null) {
