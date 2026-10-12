@@ -166,12 +166,38 @@ class TiVoButtonService : AccessibilityService() {
         return false
     }
 
+    /**
+     * Channels restarts a recording from its own saved resume point, not from where the TV was switched off. Its seek call is relative
+     * (`POST /api/seek/<seconds>`, negative = back; measured on .137), so seek by the difference between the wanted position and the current one.
+     */
+    private fun seekRecording(wantedSec: Double) {
+        if (wantedSec < 5.0) return
+        val end = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < end) {
+            val body = channelsApi("GET", "/api/status")
+            val cur = try { JSONObject(body ?: "").takeIf { it.optString("status") == "playing" && it.has("playback_time") }?.optDouble("playback_time") } catch (e: Exception) { null }
+            if (cur != null) {
+                val delta = wantedSec - cur
+                if (Math.abs(delta) > 5.0) {
+                    channelsApi("POST", "/api/seek/" + String.format(java.util.Locale.US, "%.1f", delta))
+                    Log.i(TAG, "Power on: recording seeked from ${cur.toInt()} s to ${wantedSec.toInt()} s")
+                }
+                return
+            }
+            Thread.sleep(500)
+        }
+        Log.w(TAG, "Power on: could not seek the recording to ${wantedSec.toInt()} s (not playing)")
+    }
+
     /** Power off (screen off, or the first press of the TiVo power key): remember what Channels was playing, for the next power on. */
     private fun handlePowerOff() {
         if (!ResumePrefs.isEnabled(this)) return
         Thread {
             try {
-                val snap = snapshotNow() ?: lastSnap?.takeIf { System.currentTimeMillis() - it.at <= 10_000 }
+                val snap = snapshotNow() ?: lastSnap?.takeIf { System.currentTimeMillis() - it.at <= 10_000 }?.let {
+                    // The poll's snapshot is a few seconds old: a recording has moved on since.
+                    if (it.kind == ResumeSnapshot.RECORDING && it.playing) it.copy(posSec = it.posSec + (System.currentTimeMillis() - it.at) / 1000.0) else it
+                }
                 if (snap != null) {
                     ResumePrefs.save(this, snap)
                     Log.i(TAG, "Power off: remembered ${snap.kind} ${snap.id}")
@@ -214,6 +240,7 @@ class TiVoButtonService : AccessibilityService() {
                     launchChannelsDeepLink(snap.id, if (snap.kind == ResumeSnapshot.LIVE) "channel" else "recording")
                     waitPlayingSnap(snap, 25_000)
                 }
+                if (snap.kind == ResumeSnapshot.RECORDING) seekRecording(snap.posSec)
             } catch (e: Exception) {
                 Log.w(TAG, "Power on: resume of ${snap.kind} ${snap.id} failed", e)
             } finally {
