@@ -89,7 +89,7 @@ class TiVoButtonService : AccessibilityService() {
 
     /**
      * TVs that really sleep (the TCL Google TV, .102) get no power key we can see: the system handles it. Waking the TV is the "power on" event,
-     * so ACTION_SCREEN_ON brings Channels to the front, like GUIDE/LIVE do. (The TiVo boxes stay awake when their TV goes off, so this stays quiet there.
+     * so ACTION_SCREEN_ON does what the LIVE button does (Channels on the Live channel). (The TiVo boxes stay awake when their TV goes off, so this stays quiet there.
      * Ending the screensaver does not send ACTION_SCREEN_ON.)
      */
     private fun registerScreenOnReceiver() {
@@ -99,8 +99,8 @@ class TiVoButtonService : AccessibilityService() {
                 val now = System.currentTimeMillis()
                 if (now - lastScreenOnLaunch < 5_000) return
                 lastScreenOnLaunch = now
-                Log.i(TAG, "Screen on (TV woke): bringing Channels to the front")
-                bringChannelsToFront()
+                Log.i(TAG, "Screen on (TV woke): opening Channels on the Live channel")
+                handleLiveButton()
             }
         }
         try {
@@ -133,8 +133,8 @@ class TiVoButtonService : AccessibilityService() {
 
         // Swallow the remote's power key (down AND up) so Channels never sees it as play/pause.
         if (event.scanCode == POWER_SCAN_CODE && event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-            // The key is a toggle (on and off look the same to us), so every press brings Channels to the front; if it already is, Android just resumes it.
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) bringChannelsToFront()
+            // The key is a toggle (on and off look the same to us), so every press does what the LIVE button does: open Channels on the Live channel.
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handleLiveButton()
             if (swallowPowerKey()) return true
         }
 
