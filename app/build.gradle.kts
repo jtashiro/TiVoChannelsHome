@@ -7,7 +7,7 @@ plugins {
 }
 
 // Home Assistant address and the Live-button webhook id come from local.properties (not in git):
-//   ha.host=192.168.1.96   ha.port=8123   ha.live.webhook=<id from ha-docker config/tivo/live-webhook-id.txt>
+//   ha.host=192.168.1.96   ha.port=8123   ha.live.webhook=<id from ha-docker config/tivo/live-webhook-id.txt>   ha.power.webhook=<id from config/tivo/power-webhook-id.txt>
 // Without them the app builds fine but does not sync the Live channel with Home Assistant.
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
@@ -22,12 +22,13 @@ android {
         applicationId = "com.fiospace.tivochannelshome"
         minSdk = 21
         targetSdk = 36
-        versionCode = 19
-        versionName = "1.18"
+        versionCode = 21
+        versionName = "1.20"
 
         buildConfigField("String", "HA_HOST", "\"${localProp("ha.host")}\"")
         buildConfigField("int", "HA_PORT", localProp("ha.port", "8123").toIntOrNull()?.toString() ?: "8123")
         buildConfigField("String", "HA_LIVE_WEBHOOK", "\"${localProp("ha.live.webhook")}\"")
+        buildConfigField("String", "HA_POWER_WEBHOOK", "\"${localProp("ha.power.webhook")}\"")
     }
 
     buildFeatures {

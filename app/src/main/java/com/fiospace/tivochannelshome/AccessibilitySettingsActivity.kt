@@ -32,18 +32,20 @@ class AccessibilitySettingsActivity : Activity() {
         }
 
         // Present an in-app configuration dialog that the Accessibility settings UI can open.
-        val options = arrayOf(
+        val tivo = ResumePrefs.isTiVoDevice()
+        val options = mutableListOf(
             "Open Usage Access Settings",
             "Uninstall OEM Apps (best-effort)",
             "Launch Channels Live",
             "Live button channel: ${LiveChannelPrefs.get(this) ?: "none (opens live player)"}${if (LiveChannelPrefs.pendingSince(this) != 0L) "  (syncing with Home Assistant…)" else ""}",
-            "Restore TV to last state on power on: ${if (ResumePrefs.isEnabled(this)) "Yes" else "No"}  (select to change)",
-            "Close"
+            "Power on: ${powerOnLabel(ResumePrefs.powerOnMode(this))}",
         )
+        if (tivo) options.add("Power off: ${powerOffLabel(ResumePrefs.powerOffMode(this))}")
+        options.add("Close")
 
         val builder = AlertDialog.Builder(this)
             .setTitle("TiVo Channels Home — Configuration")
-            .setItems(options) { dialog: DialogInterface, which: Int ->
+            .setItems(options.toTypedArray()) { dialog: DialogInterface, which: Int ->
                 when (which) {
                     0 -> { // Open Usage Access
                         try {
@@ -145,12 +147,21 @@ class AccessibilitySettingsActivity : Activity() {
                         pickerActive = true
                         showLiveChannelPicker()
                     }
-                    4 -> { // Restore TV to last state
-                        val on = !ResumePrefs.isEnabled(this)
-                        ResumePrefs.setEnabled(this, on)
-                        Toast.makeText(this, "Restore TV to last state: ${if (on) "Yes" else "No"}", Toast.LENGTH_SHORT).show()
+                    4 -> { // Power on
+                        pickerActive = true
+                        showChoice("Power on", POWER_ON_MODES.map { powerOnLabel(it) }, POWER_ON_MODES.indexOf(ResumePrefs.powerOnMode(this))) {
+                            ResumePrefs.setPowerFromUser(this, on = POWER_ON_MODES[it])
+                            Toast.makeText(this, "Power on: ${powerOnLabel(POWER_ON_MODES[it])}", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                    5 -> { /* Close */ }
+                    5 -> if (tivo) { // Power off (TiVo boxes only)
+                        pickerActive = true
+                        showChoice("Power off", POWER_OFF_MODES.map { powerOffLabel(it) }, POWER_OFF_MODES.indexOf(ResumePrefs.powerOffMode(this))) {
+                            ResumePrefs.setPowerFromUser(this, off = POWER_OFF_MODES[it])
+                            Toast.makeText(this, "Power off: ${powerOffLabel(POWER_OFF_MODES[it])}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    else -> { /* Close */ }
                 }
             }
             .setOnDismissListener { if (!pickerActive) finish() }
@@ -160,6 +171,33 @@ class AccessibilitySettingsActivity : Activity() {
 
         // Ensure suppression flag is cleared when the activity finishes (onDismiss will call finish())
         // but also clear in onDestroy as a safety net.
+    }
+
+    private val POWER_ON_MODES = listOf(ResumePrefs.ON_NONE, ResumePrefs.ON_CHANNELS, ResumePrefs.ON_TUNE)
+    private val POWER_OFF_MODES = listOf(ResumePrefs.OFF_PAUSE, ResumePrefs.OFF_CONTINUE, ResumePrefs.OFF_EXIT)
+
+    private fun powerOnLabel(mode: String) = when (mode) {
+        ResumePrefs.ON_NONE -> "No action"
+        ResumePrefs.ON_CHANNELS -> "Channels"
+        else -> "Channels and tune to last state (else Live channel)"
+    }
+
+    private fun powerOffLabel(mode: String) = when (mode) {
+        ResumePrefs.OFF_PAUSE -> "Pause"
+        ResumePrefs.OFF_CONTINUE -> "Continue playing"
+        else -> "Exit Channels"
+    }
+
+    /** One-of-N choice list (replaces the main dialog); [onPick] gets the chosen index. Finishes the activity when dismissed. */
+    private fun showChoice(title: String, labels: List<String>, current: Int, onPick: (Int) -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(labels.toTypedArray(), current) { dialog, which ->
+                onPick(which)
+                dialog.dismiss()
+            }
+            .setOnDismissListener { finish() }
+            .show()
     }
 
     /** Loads the DVR's channel list and lets the user pick the channel the remote's LIVE button tunes; falls back to typing a number if the DVR cannot be reached. */

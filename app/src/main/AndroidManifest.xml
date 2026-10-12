@@ -8,6 +8,7 @@
     <uses-feature android:name="android.hardware.type.television" android:required="false" />
 
     <!-- Request Usage Access so the system lists this app in Usage Access settings -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <!-- Permission for posting notifications on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

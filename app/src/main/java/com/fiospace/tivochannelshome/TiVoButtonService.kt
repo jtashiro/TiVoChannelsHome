@@ -80,6 +80,7 @@ class TiVoButtonService : AccessibilityService() {
         createNotification()
         // Keep the LIVE-button channel in step with Home Assistant (no-op unless ha.host / ha.live.webhook were set at build time).
         LiveSync.start(applicationContext)
+        PowerSync.start(applicationContext)
         ensureLauncherEntryEnabled()
         registerScreenOnReceiver()
         startSnapshotPoll()
@@ -190,31 +191,61 @@ class TiVoButtonService : AccessibilityService() {
     }
 
     /** Power off (screen off, or the first press of the TiVo power key): remember what Channels was playing, for the next power on. */
-    private fun handlePowerOff() {
-        if (!ResumePrefs.isEnabled(this)) return
+    private fun handlePowerOff(offMode: String = ResumePrefs.OFF_CONTINUE) {
+        if (!ResumePrefs.isEnabled(this) && offMode == ResumePrefs.OFF_CONTINUE) return
         Thread {
             try {
-                val snap = snapshotNow() ?: lastSnap?.takeIf { System.currentTimeMillis() - it.at <= 10_000 }?.let {
-                    // The poll's snapshot is a few seconds old: a recording has moved on since.
-                    if (it.kind == ResumeSnapshot.RECORDING && it.playing) it.copy(posSec = it.posSec + (System.currentTimeMillis() - it.at) / 1000.0) else it
-                }
-                if (snap != null) {
-                    ResumePrefs.save(this, snap)
-                    Log.i(TAG, "Power off: remembered ${snap.kind} ${snap.id}")
-                } else {
-                    ResumePrefs.clear(this)
-                    Log.i(TAG, "Power off: nothing was playing")
+                if (ResumePrefs.isEnabled(this)) saveStateForPowerOn()
+                when (offMode) {
+                    ResumePrefs.OFF_PAUSE -> if (channelsStatus().first == "playing") {
+                        channelsApi("POST", "/api/pause")
+                        Log.i(TAG, "Power off: Channels paused")
+                    }
+                    ResumePrefs.OFF_EXIT -> stopAndExitChannels()
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Power off: could not save the state", e)
+                Log.w(TAG, "Power off failed", e)
             }
         }.start()
     }
 
-    /** Power on: resume what was playing at power off (when "Restore TV to last state" is on), else do what the LIVE button does. */
+    private fun saveStateForPowerOn() {
+        val snap = snapshotNow() ?: lastSnap?.takeIf { System.currentTimeMillis() - it.at <= 10_000 }?.let {
+            // The poll's snapshot is a few seconds old: a recording has moved on since.
+            if (it.kind == ResumeSnapshot.RECORDING && it.playing) it.copy(posSec = it.posSec + (System.currentTimeMillis() - it.at) / 1000.0) else it
+        }
+        if (snap != null) {
+            ResumePrefs.save(this, snap)
+            Log.i(TAG, "Power off: remembered ${snap.kind} ${snap.id}")
+        } else {
+            ResumePrefs.clear(this)
+            Log.i(TAG, "Power off: nothing was playing")
+        }
+    }
+
+    /**
+     * TiVo boxes only: stop what Channels is playing and exit it. /api/stop ends playback but leaves the app on its menu (Back does not leave it),
+     * so go Home and then kill the now-background process.
+     */
+    private fun stopAndExitChannels() {
+        val (status, _) = channelsStatus()
+        if (status == "playing" || status == "paused") channelsApi("POST", "/api/stop")
+        Thread.sleep(500)
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        Thread.sleep(1_500)
+        (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(CHANNELS_PKG)
+        Log.i(TAG, "Power off: Channels stopped and exited")
+    }
+
+    /**
+     * Power on, by the "Power On" option: nothing; just Channels; or Channels tuned to what was playing at power off (else the Live channel).
+     * A paused Channels (Power Off = pause) is resumed in the last two.
+     */
     private fun handlePowerOn() {
-        val snap = if (ResumePrefs.isEnabled(this)) ResumePrefs.take(this) else null
-        if (snap == null) {
+        val mode = ResumePrefs.powerOnMode(this)
+        if (mode == ResumePrefs.ON_NONE) return
+        val snap = if (mode == ResumePrefs.ON_TUNE) ResumePrefs.take(this) else null
+        if (mode == ResumePrefs.ON_TUNE && snap == null) {
             handleLiveButton()
             return
         }
@@ -224,6 +255,12 @@ class TiVoButtonService : AccessibilityService() {
         }
         Thread {
             try {
+                if (snap == null) {
+                    Log.i(TAG, "Power on: bringing Channels to the front")
+                    bringChannelsToFront()
+                    if (channelsStatus().first == "paused") channelsApi("POST", "/api/resume")
+                    return@Thread
+                }
                 Log.i(TAG, "Power on: resuming ${snap.kind} ${snap.id}")
                 if (snap.kind == ResumeSnapshot.LIVE) {
                     tuneLive(snap.id)
@@ -241,8 +278,9 @@ class TiVoButtonService : AccessibilityService() {
                     waitPlayingSnap(snap, 25_000)
                 }
                 if (snap.kind == ResumeSnapshot.RECORDING) seekRecording(snap.posSec)
+                if (channelsStatus().first == "paused") channelsApi("POST", "/api/resume")
             } catch (e: Exception) {
-                Log.w(TAG, "Power on: resume of ${snap.kind} ${snap.id} failed", e)
+                Log.w(TAG, "Power on: failed", e)
             } finally {
                 liveBusy.set(false)
             }
@@ -279,7 +317,7 @@ class TiVoButtonService : AccessibilityService() {
                     handlePowerOn()
                 } else {
                     ResumePrefs.setOff(this, true)
-                    handlePowerOff()
+                    handlePowerOff(ResumePrefs.powerOffMode(this))
                 }
             }
             if (swallowPowerKey()) return true
@@ -583,6 +621,7 @@ class TiVoButtonService : AccessibilityService() {
             Log.w(TAG, "Failed to cancel notification on destroy", e)
         }
         LiveSync.stop()
+        PowerSync.stop()
         try { screenOnReceiver?.let { unregisterReceiver(it) } } catch (e: Exception) { }
         screenOnReceiver = null
         pollRunning = false
