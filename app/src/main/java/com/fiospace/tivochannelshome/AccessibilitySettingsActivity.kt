@@ -36,7 +36,7 @@ class AccessibilitySettingsActivity : Activity() {
             "Open Usage Access Settings",
             "Uninstall OEM Apps (best-effort)",
             "Launch Channels Live",
-            "Live button channel: ${LiveChannelPrefs.get(this) ?: "none (opens live player)"}",
+            "Live button channel: ${LiveChannelPrefs.get(this) ?: "none (opens live player)"}${if (LiveChannelPrefs.pendingSince(this) != 0L) "  (syncing with Home Assistant…)" else ""}",
             "Close"
         )
 
@@ -200,7 +200,7 @@ class AccessibilitySettingsActivity : Activity() {
             .setTitle("Live button channel")
             .setItems(labels.toTypedArray()) { _, which ->
                 val chosen = if (which == 0) null else channels[which - 1].first
-                LiveChannelPrefs.set(this, chosen)
+                LiveChannelPrefs.setFromUser(this, chosen)
                 Toast.makeText(this, "Live button: ${chosen ?: "opens the live player"}", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
@@ -221,7 +221,7 @@ class AccessibilitySettingsActivity : Activity() {
             .setPositiveButton("Save") { _, _ ->
                 val text = input.text.toString().trim()
                 if (text.isEmpty() || LiveChannelPrefs.isValid(text)) {
-                    LiveChannelPrefs.set(this, text)
+                    LiveChannelPrefs.setFromUser(this, text)
                     Toast.makeText(this, "Live button: ${text.ifEmpty { "opens the live player" }}", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Not a channel number: $text", Toast.LENGTH_LONG).show()

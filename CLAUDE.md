@@ -6,7 +6,7 @@ The TVs run Android 12 (SDK 31; TiVo Stream 4K, Amlogic). One client is a Chrome
 ## What lives where
 - `TiVoButtonService.kt` - AccessibilityService that filters the TiVo remote's keys: launches Channels (`com.getchannels.dvr.app`) for HOME/GUIDE/DVR, swallows the power key, and tunes a channel on the LIVE key.
 - `AccessibilitySettingsActivity.kt` - the "TiVo Channels Home - Configuration" dialog (Usage Access, OEM cleanup, Launch Channels Live, **Live button channel** picker). `MainActivity` (the app's tile) just opens this dialog; it no longer launches Channels.
-- `ChannelsHttp.kt` - socket HTTP helper (no cleartext config needed) + `LiveChannelPrefs` (the chosen Live channel, in `tivo_prefs`).
+- `ChannelsHttp.kt` - socket HTTP helper (no cleartext config needed) + `LiveChannelPrefs` (the chosen Live channel, in `tivo_prefs`). `LiveSync.kt` - keeps that channel in step with Home Assistant (below).
 - `UsageMonitorService.kt` - foreground service that sends the TiVo UI back to Channels. `UsageAccessActivity` - helper.
 - `provisioning/scripts/provision_tivo.sh`, `scripts/uninstall_oem_packages.sh` - strip OEM apps, install a Google TV launcher, enable the service.
 - `app/build.gradle.kts` - NOTE: `assembleDebug` is `finalizedBy("installDebug")` and then `uninstallOemApps` removes ~14 packages (incl. `com.netflix.ninja`,
@@ -46,20 +46,36 @@ Cord-cut: Channels DVR on dvr.local (192.168.1.61, all TVs use it; a second DVR 
 dashboard switch ("TiVo remote buttons"). The IR power signal to the TV is separate and unaffected. If the app is not rebuilt on a TV, the host service undoes the pause with an
 explicit play/pause key instead. Keep the `Log.d(... onKeyEvent ...)` line: the host service reads it from logcat (`TiVoButtonService:D`).
 
-## LIVE button (version 1.2+) - runs on the TV, no host involved
-`TiVoButtonService.onKeyEvent` handles keyCode 5124 / scanCode 240: swallows DOWN and UP, acts on the first DOWN only. The channel is `LiveChannelPrefs.get()`: the choice made in the Configuration
-dialog ("Live button channel", fed from the DVR's `/api/v1/channels` at `LiveChannelPrefs.DEFAULT_DVR_HOST` 192.168.1.61:8089, typed entry if the DVR is unreachable), else the adb fallback
-`adb shell settings put global tivo_live_channel <n>`; none = just open the Channels live player. How it tunes (`tuneLive`): Channels API at 127.0.0.1:57000 (`POST /api/play/channel/<n>`)
-**only when the app reports `playing`/`paused`** (retunes inside the running player); otherwise the deep link `channels://com.getchannels.dvr.app/play/channel/<n>`. Reasons, measured on the devices:
-the API also answers when Channels is closed or on a menu but then a tune POST returns 200 and does nothing (cost ~16 s), and the deep link over a running player starts a second PlayerActivity
-on top of it (was followed by a spinner / "Connection lost" on channel 6073 - cause not proven). The API reports `playing` as soon as a tune is requested, so success needs 2 s of stable `playing`.
-Already playing the target: just bring Channels to the front. One press at a time. Typical: ~3 s via API, ~4 s via deep link.
+## LIVE button (version 1.2+) - runs on the TV; its channel is synced with Home Assistant (1.5+)
+`TiVoButtonService.onKeyEvent` handles keyCode 5124 / scanCode 240: swallows DOWN and UP, acts on the first DOWN only. The channel is `LiveChannelPrefs.get()`: the choice in the app's own prefs
+(`tivo_prefs`, set in the Configuration dialog's "Live button channel" picker - fed from the DVR's `/api/v1/channels` at `LiveChannelPrefs.DEFAULT_DVR_HOST` 192.168.1.61:8089, typed entry if the
+DVR is unreachable - or adopted from HA), else the adb fallback `adb shell settings put global tivo_live_channel <n>`; none = just open the Channels live player. How it tunes (`tuneLive`):
+Channels API at 127.0.0.1:57000 (`POST /api/play/channel/<n>`) **only when the app reports `playing`/`paused`** (retunes inside the running player); otherwise the deep link
+`channels://com.getchannels.dvr.app/play/channel/<n>`. Reasons, measured on the devices: the API also answers when Channels is closed or on a menu but then a tune POST returns 200 and does nothing
+(cost ~16 s), and the deep link over a running player starts a second PlayerActivity on top of it (was followed by a spinner / "Connection lost" on channel 6073 - cause not proven). The API
+reports `playing` as soon as a tune is requested, so success needs 2 s of stable `playing`. Already playing the target: just bring Channels to the front. One press at a time. Typical ~3-4 s.
+
+### Home Assistant sync (`LiveSync.kt`, started by `TiVoButtonService.onServiceConnected`)
+HA is the source of truth, the TV keeps a local copy (works with HA down). HA side lives in the ha-docker repo (`tools/gen_tivo_dashboard.py`, deployed with `--deploy` on hp.local): per TV an
+`input_text.tivo_<ip>_live_channel`, a "Live button tunes to:" pick on its dashboard tab (first entry "(none - just open the live player)"), an automation that publishes
+`config/www/tivo-live.txt` (`ip=channel;ip=channel;`, blank = none; served without login at `http://192.168.1.96:8123/local/tivo-live.txt`), and a webhook automation
+(`config/tivo/live-webhook-id.txt` on hp.local) that takes `{"ip","channel"}` POSTs from the TVs and raises an HA bell notification ("Live button changed on the TV") when the value changed.
+- HA -> TV: the TV polls the file every 45 s (and at service start) and adopts its own entry (seen 25-32 s after a change).
+- TV -> HA: a choice made in the dialog is stored and POSTed to the webhook; it stays "pending" (dialog shows "syncing...") and is re-sent until the file shows it, never overwritten by HA's older value; gives up after 10 min.
+- A TV is identified by its LAN IP (192.168.x.x). No entry for a TV in the file = leave the local value alone. Use HA's IP (192.168.1.96), not `hp.local` (does not resolve reliably from the TVs).
+- **Build prerequisites**: `local.properties` (gitignored; the repo is public) needs `ha.host=192.168.1.96`, `ha.port=8123`, `ha.live.webhook=<id from hp.local ~/ha-docker/config/tivo/live-webhook-id.txt>`; they are baked
+  into `BuildConfig`. Without them the app builds and works but the sync is off.
+- Do NOT simulate "HA changed it" by POSTing to the webhook while testing: HA cannot tell that from a TV-side change and raises the bell notification. Change the value in HA's UI instead.
+- **No TV-side notification on purpose.** Google TV's Notifications panel (`com.google.android.tvrecommendations`) only lists notifications from an allowlist of packages
+  (`tvlauncher:notifications_whitelisted_packages`, a Google/partner-controlled flag); ordinary app notifications - even ones posted from the adb shell - never show up there, and adb cannot
+  change the flag (`GSERVICES_OVERRIDE` broadcast is refused: Permission Denial, uid 2000). A toast was not wanted. The Channels app's own `POST http://<tv>:57000/api/notify`
+  (`{"title","message","icon"}`) does draw a top-right banner, but only while Channels is playing; it was tested (works) and not built in.
 
 ## Do not break
 - `onServiceConnected` restricts `packageNames` to this app, sets `eventTypes = 0`, `feedbackType = 0`, `FLAG_REQUEST_FILTER_KEY_EVENTS` only. This fixed Google TV "single click acts as
   long press" side effects. Leave it.
 - Version convention: **bump `versionCode`/`versionName` in `app/build.gradle.kts` for every build you install.** The HA dashboard shows `v<name> (<code>) - updated <time>` and a red
-  "service off" per TV. 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
+  "service off" per TV. 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
   package-visibility fix; 1.0 (1) = older builds.
 
 ## Build, install, check (macOS)

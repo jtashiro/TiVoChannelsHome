@@ -74,6 +74,8 @@ class TiVoButtonService : AccessibilityService() {
             Log.w(TAG, "Failed to set serviceInfo flags", e)
         }
         createNotification()
+        // Keep the LIVE-button channel in step with Home Assistant (no-op unless ha.host / ha.live.webhook were set at build time).
+        LiveSync.start(applicationContext)
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -353,6 +355,7 @@ class TiVoButtonService : AccessibilityService() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to cancel notification on destroy", e)
         }
+        LiveSync.stop()
         super.onDestroy()
     }
 }
