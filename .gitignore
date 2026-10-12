@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+.kotlin/
+boot_capture_log.txt
+dumpsys_accessibility.txt
+tivo_getevent.txt
+tivo_logcat.txt
