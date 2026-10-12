@@ -35,9 +35,6 @@ class TiVoButtonService : AccessibilityService() {
         // (/vendor/usr/keylayout/Vendor_0471_Product_1207.kl) maps it to MEDIA_PLAY_PAUSE, so every press (TV off OR on)
         // toggled play/pause in Channels. The remote's IR power command to the TV is a separate signal and still works.
         private const val POWER_SCAN_CODE = 116
-        // Settings.Global flag, 1 (default) = swallow that key, 0 = let it through. Set from the host with
-        // `adb shell settings put global tivo_swallow_power 0` (the Home Assistant dashboard switch does this).
-        private const val SWALLOW_POWER_SETTING = "tivo_swallow_power"
 
         // The remote's LIVE button arrives as keyCode 5124, scanCode 240 (seen in logcat; the service receives it, the system does not consume it first).
         private const val LIVE_KEYCODE = 5124
@@ -320,7 +317,7 @@ class TiVoButtonService : AccessibilityService() {
                     handlePowerOff(ResumePrefs.powerOffMode(this))
                 }
             }
-            if (swallowPowerKey()) return true
+            return true   // always swallowed: what the press does is set by the Power on / Power off options
         }
 
         // LIVE button: tune the configured channel. Swallow the DOWN so nothing else reacts to it, but let the UP through: TiVo's own system app
@@ -348,12 +345,6 @@ class TiVoButtonService : AccessibilityService() {
         }
 
         return handleLaunchShortcuts(event)
-    }
-
-    private fun swallowPowerKey(): Boolean = try {
-        android.provider.Settings.Global.getInt(contentResolver, SWALLOW_POWER_SETTING, 1) != 0
-    } catch (e: Exception) {
-        true
     }
 
     /** The channel the LIVE button tunes: chosen in the app's Configuration panel (see [LiveChannelPrefs]); null = none chosen. */

@@ -12,7 +12,7 @@ The TVs run Android 12 (SDK 31; TiVo Stream 4K, Amlogic). One client is a Chrome
 - `app/build.gradle.kts` - NOTE: `assembleDebug` is `finalizedBy("installDebug")` and then `uninstallOemApps` removes ~14 packages (incl. `com.netflix.ninja`,
   Amazon, Sling, Plex) with `pm uninstall --user 0`. It acts on whatever device adb selects. **Always `export ANDROID_SERIAL=<ip>:5555` first.**
 - A second repo, `~/ha-docker` (GitHub jtashiro/ha-docker, runs on the Ubuntu server hp.local), holds Home Assistant plus host services that reach these TVs over adb:
-  collector (status + the dashboard's "TiVoChannelsHome app" column), `tivo_powerkey.py` (see below), reboot scheduler, channel schedule. Do not duplicate that here.
+  collector (status + the dashboard's "TiVoChannelsHome app" column), reboot scheduler, channel schedule. Do not duplicate that here.
 
 ## The house
 Cord-cut: Channels DVR on dvr.local (192.168.1.61, all TVs use it; a second DVR at .30), three HDHomeRun tuners, Xfinity via TV Everywhere. Clients (adb on :5555):
@@ -35,16 +35,16 @@ Cord-cut: Channels DVR on dvr.local (192.168.1.61, all TVs use it; a second DVR 
   DVR=173/scan 240, GUIDE=172/scan 362, **LIVE=5124/scan 240**, one unidentified app button 272/scan 240, OK=23/353, arrows 19-22, power=85/116.
 - The **Netflix button never reaches the service**: the system handles it first (`WindowManager: netflix key do one touch play`, then
   `START act=com.netflix.action.NETFLIX_KEY_START pkg=com.netflix.ninja`, `ActivityNotFoundException` when Netflix is absent). It cannot be remapped from the app. It is **left to the real
-  Netflix app** (TVs that have it launch it; the host service `tivo_powerkey.py` no longer touches it - an earlier host hook that opened Channels on a channel was removed, it was confusing
+  Netflix app** (TVs that have it launch it; an earlier host hook that opened Channels on a channel was removed, it was confusing
   and its deep-link tune was unreliable).
 - Android 11+ package visibility: without `<queries><package android:name="com.getchannels.dvr.app"/>` (now in the manifest) `getLaunchIntentForPackage` returned null
   ("Launch intent not found") and GUIDE/DVR/HOME did nothing. Channels has LAUNCHER and LEANBACK_LAUNCHER activities.
 - Channels resumes live TV (its own `PlayerActivity`) on launch, so the DVR button lands on live TV even though the `tab=dvr_library` extra switches the sidebar.
 
-## Power button handling (version 1.1)
-`TiVoButtonService.onKeyEvent` swallows scanCode 116 / keyCode 85 unless `Settings.Global tivo_swallow_power == 0` (default 1). The host writes that flag from the Home Assistant
-dashboard switch ("TiVo remote buttons"). The IR power signal to the TV is separate and unaffected. If the app is not rebuilt on a TV, the host service undoes the pause with an
-explicit play/pause key instead. Keep the `Log.d(... onKeyEvent ...)` line: the host service reads it from logcat (`TiVoButtonService:D`).
+## Power button handling
+`TiVoButtonService.onKeyEvent` always swallows scanCode 116 / keyCode 85 (the remote's power key arrives as play/pause), so Channels never toggles pause by itself; what a press does is set by the
+Power on / Power off options (see "Restore TV to last state" below). The IR power signal to the TV is separate and unaffected. Keep the `Log.d(... onKeyEvent ...)` line (handy for debugging).
+Removed in 1.21: the `Settings.Global tivo_swallow_power` flag, the Home Assistant switch "Power button: keep playing" and the host service `tivo_powerkey.py` (it un-paused after a press, which would undo the Pause option).
 
 ## LIVE button (version 1.2+) - runs on the TV; its channel is synced with Home Assistant (1.5+)
 `TiVoButtonService.onKeyEvent` handles keyCode 5124 / scanCode 240: swallows DOWN and UP, acts on the first DOWN only. The channel is `LiveChannelPrefs.get()`: the choice in the app's own prefs
@@ -93,7 +93,7 @@ re-enables it every time the service starts (so also after an update). Check: `a
 - `onServiceConnected` restricts `packageNames` to this app, sets `eventTypes = 0`, `feedbackType = 0`, `FLAG_REQUEST_FILTER_KEY_EVENTS` only. This fixed Google TV "single click acts as
   long press" side effects. Leave it.
 - Version convention: **bump `versionCode`/`versionName` in `app/build.gradle.kts` for every build you install.** The HA dashboard shows `v<name> (<code>) - updated <time>` and a red
-  "service off" per TV. 1.20 (21) = HA sync of the Power on / Power off options (`PowerSync.kt`, `/local/tivo-power.txt`, webhook `ha.power.webhook` in local.properties; HA side in ha-docker `tools/gen_tivo_dashboard.py`: per-TV `input_select.tivo_<ip>_power_on/_power_off`, bell notification on a TV-side change); 1.19 (20) = power options as dropdowns in the Configuration dialog: Power on (all devices: No action / Channels / Channels and tune to last state else Live channel, default the last) and Power off (TiVo only: Pause / Continue playing / Exit Channels, default Exit; exit = `POST /api/stop`, Home, `killBackgroundProcesses`); 1.18 (19) = a resumed recording is seeked to where it was (`POST /api/seek/<delta seconds>` is relative); 1.17 (18) = "Restore TV to last state" (see below); 1.16 (17) = power key and TV wake (screen on) do what the LIVE button does (open Channels on the Live channel); 1.15 (16) = screen-on (TV woke) brings Channels to the front, for TVs that sleep (.102); 1.14 (15) = remote power key also brings Channels to the front; 1.13 (14) = SKIP button (272/scan 240) toggles closed captions via `POST /api/toggle_cc` (only while Channels is playing/paused); 1.12 (13) = re-enables a disabled launcher tile; 1.11 (12) = Live key-up passes through (ends the screensaver); 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
+  "service off" per TV. 1.21 (22) = the TiVo power key is always swallowed; the old HA switch + host service `tivo_powerkey.py` are gone; 1.20 (21) = HA sync of the Power on / Power off options (`PowerSync.kt`, `/local/tivo-power.txt`, webhook `ha.power.webhook` in local.properties; HA side in ha-docker `tools/gen_tivo_dashboard.py`: per-TV `input_select.tivo_<ip>_power_on/_power_off`, bell notification on a TV-side change); 1.19 (20) = power options as dropdowns in the Configuration dialog: Power on (all devices: No action / Channels / Channels and tune to last state else Live channel, default the last) and Power off (TiVo only: Pause / Continue playing / Exit Channels, default Exit; exit = `POST /api/stop`, Home, `killBackgroundProcesses`); 1.18 (19) = a resumed recording is seeked to where it was (`POST /api/seek/<delta seconds>` is relative); 1.17 (18) = "Restore TV to last state" (see below); 1.16 (17) = power key and TV wake (screen on) do what the LIVE button does (open Channels on the Live channel); 1.15 (16) = screen-on (TV woke) brings Channels to the front, for TVs that sleep (.102); 1.14 (15) = remote power key also brings Channels to the front; 1.13 (14) = SKIP button (272/scan 240) toggles closed captions via `POST /api/toggle_cc` (only while Channels is playing/paused); 1.12 (13) = re-enables a disabled launcher tile; 1.11 (12) = Live key-up passes through (ends the screensaver); 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
   package-visibility fix; 1.0 (1) = older builds.
 
 ## Build, install, check (macOS)
