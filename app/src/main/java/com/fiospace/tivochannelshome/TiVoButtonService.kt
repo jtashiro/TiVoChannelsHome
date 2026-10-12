@@ -42,6 +42,9 @@ class TiVoButtonService : AccessibilityService() {
         // The remote's LIVE button arrives as keyCode 5124, scanCode 240 (seen in logcat; the service receives it, the system does not consume it first).
         private const val LIVE_KEYCODE = 5124
         private const val LIVE_SCAN_CODE = 240
+        // The remote's SKIP button (keyCode 272 = KEYCODE_MEDIA_SKIP_FORWARD, scanCode 240) toggles closed captions via the Channels API.
+        private const val SKIP_KEYCODE = 272
+        private const val SKIP_SCAN_CODE = 240
         // The Channels app's own HTTP API (answers on the device itself).
         private const val CHANNELS_API_PORT = 57000
     }
@@ -116,6 +119,14 @@ class TiVoButtonService : AccessibilityService() {
             return event.action == KeyEvent.ACTION_DOWN
         }
 
+        // SKIP button: toggle closed captions in the Channels player. Same DOWN-only swallow as LIVE (the UP must reach TiVo's screensaver handling).
+        if (event.keyCode == SKIP_KEYCODE && event.scanCode == SKIP_SCAN_CODE) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                handleSkipButton()
+            }
+            return event.action == KeyEvent.ACTION_DOWN
+        }
+
         // We only care about key down events for launching apps.
         if (event.action != KeyEvent.ACTION_DOWN) {
             return false
@@ -152,6 +163,23 @@ class TiVoButtonService : AccessibilityService() {
                 Log.w(TAG, "LIVE button: tune of $ch failed", e)
             } finally {
                 liveBusy.set(false)
+            }
+        }.start()
+    }
+
+    /** SKIP button: flip closed captions. The API only acts while the player is up, so it is called only when Channels is playing/paused. */
+    private fun handleSkipButton() {
+        Thread {
+            try {
+                val status = channelsStatus().first
+                if (status == "playing" || status == "paused") {
+                    channelsApi("POST", "/api/toggle_cc")
+                    Log.i(TAG, "SKIP button: toggled closed captions (status=$status)")
+                } else {
+                    Log.i(TAG, "SKIP button: Channels not playing (status=$status), ignored")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "SKIP button: toggle_cc failed", e)
             }
         }.start()
     }

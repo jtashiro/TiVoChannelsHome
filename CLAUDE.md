@@ -85,7 +85,7 @@ re-enables it every time the service starts (so also after an update). Check: `a
 - `onServiceConnected` restricts `packageNames` to this app, sets `eventTypes = 0`, `feedbackType = 0`, `FLAG_REQUEST_FILTER_KEY_EVENTS` only. This fixed Google TV "single click acts as
   long press" side effects. Leave it.
 - Version convention: **bump `versionCode`/`versionName` in `app/build.gradle.kts` for every build you install.** The HA dashboard shows `v<name> (<code>) - updated <time>` and a red
-  "service off" per TV. 1.12 (13) = re-enables a disabled launcher tile; 1.11 (12) = Live key-up passes through (ends the screensaver); 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
+  "service off" per TV. 1.13 (14) = SKIP button (272/scan 240) toggles closed captions via `POST /api/toggle_cc` (only while Channels is playing/paused); 1.12 (13) = re-enables a disabled launcher tile; 1.11 (12) = Live key-up passes through (ends the screensaver); 1.10 (11) = HA sync of the Live channel (1.5-1.9 were its development steps incl. TV-side notification experiments, all removed); 1.4 (5) = the app tile opens the Configuration dialog; 1.3 (4) = new icon/banner; 1.2 (3) = LIVE button + channel picker; 1.1 (2) = power-key swallow +
   package-visibility fix; 1.0 (1) = older builds.
 
 ## Build, install, check (macOS)
@@ -102,6 +102,6 @@ re-enables it every time the service starts (so also after an update). Check: `a
 ## Known gaps / ideas (not done)
 - `handleLaunchShortcuts` returns `true` even when the launch fails, so a failed launch also swallows the key.
 - Keys consumed on DOWN let the matching UP through (orphan UP); only the power key is swallowed on both.
-- Identify key 272 (scan 240) and decide an action; HOME is intercepted and sent to Channels.
+- HOME is intercepted and sent to Channels.
 - The LIVE channel list comes from a hard-coded DVR address (`DEFAULT_DVR_HOST`; a `dvr_host` pref overrides it, no UI for that yet).
 - Make the DVR button land on the DVR library (Channels opens the live player first).
