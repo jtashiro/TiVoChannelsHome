@@ -81,6 +81,34 @@ class TiVoButtonService : AccessibilityService() {
         // Keep the LIVE-button channel in step with Home Assistant (no-op unless ha.host / ha.live.webhook were set at build time).
         LiveSync.start(applicationContext)
         ensureLauncherEntryEnabled()
+        registerScreenOnReceiver()
+    }
+
+    private var screenOnReceiver: android.content.BroadcastReceiver? = null
+    private var lastScreenOnLaunch = 0L
+
+    /**
+     * TVs that really sleep (the TCL Google TV, .102) get no power key we can see: the system handles it. Waking the TV is the "power on" event,
+     * so ACTION_SCREEN_ON brings Channels to the front, like GUIDE/LIVE do. (The TiVo boxes stay awake when their TV goes off, so this stays quiet there.
+     * Ending the screensaver does not send ACTION_SCREEN_ON.)
+     */
+    private fun registerScreenOnReceiver() {
+        if (screenOnReceiver != null) return
+        val r = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val now = System.currentTimeMillis()
+                if (now - lastScreenOnLaunch < 5_000) return
+                lastScreenOnLaunch = now
+                Log.i(TAG, "Screen on (TV woke): bringing Channels to the front")
+                bringChannelsToFront()
+            }
+        }
+        try {
+            registerReceiver(r, android.content.IntentFilter(Intent.ACTION_SCREEN_ON))
+            screenOnReceiver = r
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register screen-on receiver", e)
+        }
     }
 
     /**
@@ -408,6 +436,8 @@ class TiVoButtonService : AccessibilityService() {
             Log.w(TAG, "Failed to cancel notification on destroy", e)
         }
         LiveSync.stop()
+        try { screenOnReceiver?.let { unregisterReceiver(it) } } catch (e: Exception) { }
+        screenOnReceiver = null
         super.onDestroy()
     }
 }
