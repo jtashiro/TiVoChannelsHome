@@ -123,9 +123,10 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   | 11 | WDC WD10SPZX 1 TB (2.5" spinning disk) | HDD | 9,328 | 16,615 | 11,613 | 20x |
   | 12 | "USB DISK 2.0" 4 GB | USB stick / flash | 18,266 | 21,787 | 3,326 | 39x |
   | 13 | SanDisk 4 GB "U3 Cruzer Micro" | USB stick / flash | never completes | >37,000 | n/a | n/a |
+  | 14 | "USB Disk 20" 126 GB (label "VendorC", size exactly 120,000 MiB) | USB stick / flash | never completes | 44,500-73,000 (avg ~55,000) | n/a | n/a |
 
   Notes: internal is the typical figure of the later sessions (428-687 over the day, odd outliers 950+). Runs completed: OCZ, both Sabrents, Crucial, Transcend and ADATA 4 of 4 (within 2-5%), 64 GB and the WD hard disk 3 of 4, "USB DISK 2.0" 2 of 4 (the rest
-  were abandoned ~22-24 s into the create phase), SanDisk 0 of 5 (vold's create phase ran ~37 s each time before the benchmark was abandoned; read phase times from `adb logcat -d | grep vold`, the "Creating ..." to
+  were abandoned ~22-24 s into the create phase), SanDisk 0 of 5 and "USB Disk 20" 0 of 4 (vold's create phase ran ~37 s for the SanDisk and 44-73 s for "USB Disk 20" before the benchmark was abandoned, and the failed runs slowed the internal create step to 6-14 s; "USB Disk 20" reports an exactly round 120,000 MiB with generic names, so it may be a counterfeit/relabeled drive, not verified; read phase times from `adb logcat -d | grep vold`, the "Creating ..." to
   "Destroying ..." lines). The first `sm benchmark` after a pause often returns no timings on the sticks and the hard disk (PNY twice, 64 GB once, WD10SPZX once; the ADATA and the SSDs never): just rerun it. A failed run on the HDD (and the
   M.2 enclosure earlier) also stalled the next internal benchmark (create 68 s), so a hiccuping drive can drag the whole system. The WD10SPZX is a bus-powered 2.5" hard disk: it worked here but is the worst of all on delete.
   The two Sabrent 240 GB SSDs (identical model) ran at the same time without a TV reset (benchmarked one at a time). Every SSD beats every stick on the core test, and USB 2.0 caps
