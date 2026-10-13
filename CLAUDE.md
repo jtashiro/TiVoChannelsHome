@@ -114,6 +114,10 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   ~14 s PNY, ~20 s 64 GB, ~22 s ADATA (read the phase times from `adb logcat -d | grep vold`, "Creating ..." to "Destroying ..." lines). Unusable.
   **"USB DISK 2.0" 4 GB stick** (direct; only 2 of 4 runs reported, the others were abandoned ~22-24 s into the create phase): run 18266 (18827, 17704) / create 21787 / destroy 3326 against internal ~450 / ~6000 / 48:
   create and delete like the ADATA/64 GB, but the core test is ~2.3x slower than the ADATA. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB.
+  **120 GB USB SSD (OCZ-VERT EX3, direct, 2026-10-13 afternoon)**: 4 of 4 runs complete and within ~3%: run 756 (731-784) / create 4019 / destroy 559 against internal ~461 / 4878 / ~50 in the same session:
+  ~1.6x slower than internal on the core test, create as fast as internal, delete ~11x slower (`dirsync`); ~2.7x faster than the PNY stick and 3-24x faster than the other sticks. Better than the earlier SSD figures
+  (977 / 4564 / 1076): maybe the same drive freshly reformatted, not established. The only drive here that could plausibly host Channels' cache. Full ranking on the core test: internal, 120 GB SSD, PNY 128 GB, 64 GB,
+  ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB.
   The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it.
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
   `usb_device_open failed`), so no card numbers exist.
