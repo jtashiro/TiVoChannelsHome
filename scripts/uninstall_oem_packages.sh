@@ -23,7 +23,6 @@ PACKAGES=(
   com.google.android.play.games
   com.google.android.videos
   com.bydeluxe.d3.android.program.starz
-  com.netflix.ninja
 )
 
 # Per-target timeout (seconds) to wait for removal before falling back

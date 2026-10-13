@@ -102,8 +102,7 @@ gradle.projectsEvaluated {
                 "com.plexapp.android",
                 "ar.tvplayer.tv",
                 "com.wolf.firelauncher",
-                "com.bydeluxe.d3.android.program.starz",
-                "com.netflix.ninja"
+                "com.bydeluxe.d3.android.program.starz"
             )
 
             println("[uninstallOemApps] ANDROID_SERIAL=${envSerial ?: "(none)"}")

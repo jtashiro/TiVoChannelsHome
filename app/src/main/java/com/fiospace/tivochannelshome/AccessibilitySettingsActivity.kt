@@ -66,8 +66,7 @@ class AccessibilitySettingsActivity : Activity() {
                             "com.amazon.avod",
                             "com.google.android.play.games",
                             "com.google.android.videos",
-                            "com.bydeluxe.d3.android.program.starz",
-                            "com.netflix.ninja"
+                            "com.bydeluxe.d3.android.program.starz"
                         )
 
                         Thread {

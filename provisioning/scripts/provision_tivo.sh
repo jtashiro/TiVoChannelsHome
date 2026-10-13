@@ -74,7 +74,6 @@ PACKAGES=(
   # --- Other streaming apps ---
   com.sling
   com.bydeluxe.d3.android.program.starz
-  com.netflix.ninja
 
   # --- Google bloat to remove ---
   com.google.android.play.games

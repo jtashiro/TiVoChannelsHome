@@ -9,8 +9,8 @@ The TVs run Android 12 (SDK 31; TiVo Stream 4K, Amlogic). One client is a Chrome
 - `ChannelsHttp.kt` - socket HTTP helper (no cleartext config needed) + `LiveChannelPrefs` (the chosen Live channel, in `tivo_prefs`). `LiveSync.kt` - keeps that channel in step with Home Assistant (below).
 - `UsageMonitorService.kt` - foreground service that sends the TiVo UI back to Channels. `UsageAccessActivity` - helper.
 - `provisioning/scripts/provision_tivo.sh`, `scripts/uninstall_oem_packages.sh` - strip OEM apps, install a Google TV launcher, enable the service.
-- `app/build.gradle.kts` - NOTE: `assembleDebug` is `finalizedBy("installDebug")` and then `uninstallOemApps` removes ~14 packages (incl. `com.netflix.ninja`,
-  Amazon, Sling, Plex) with `pm uninstall --user 0`. It acts on whatever device adb selects. **Always `export ANDROID_SERIAL=<ip>:5555` first.**
+- `app/build.gradle.kts` - NOTE: `assembleDebug` is `finalizedBy("installDebug")` and then `uninstallOemApps` removes ~13 packages (Amazon, Sling, Plex, ...) with `pm uninstall --user 0`.
+  **Netflix (`com.netflix.ninja`) is deliberately NOT in any removal list** (Gradle task, `scripts/uninstall_oem_packages.sh`, `provisioning/scripts/provision_tivo.sh`, the app's OEM cleanup in the Configuration dialog). It acts on whatever device adb selects. **Always `export ANDROID_SERIAL=<ip>:5555` first.**
 - A second repo, `~/ha-docker` (GitHub jtashiro/ha-docker, runs on the Ubuntu server hp.local), holds Home Assistant plus host services that reach these TVs over adb:
   collector (status + the dashboard's "TiVoChannelsHome app" column), reboot scheduler, channel schedule, auto cache trim, sluggish watchdog. Do not duplicate that here (a short summary is under "Host side").
 
