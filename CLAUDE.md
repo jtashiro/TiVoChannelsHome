@@ -112,23 +112,24 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   |---|---|---|---|---|---|---|
   | 1 | Internal flash (baseline, typical) | Internal flash | 468 | 4,570 | 50 | 1.0x |
   | 2 | OCZ-VERT EX3 120 GB, second unit | SSD | 677 | 3,974 | 504 | 1.4x |
-  | 3 | OCZ Solid 3 120 GB, second unit | SSD | 740 | 4,134 | 549 | 1.6x |
-  | 4 | OCZ-VERT EX3 120 GB, first unit | SSD | 756 | 4,019 | 559 | 1.6x |
-  | 5 | OCZ Solid 3 120 GB, first unit | SSD | 768 | 4,046 | 570 | 1.6x |
-  | 6 | Sabrent 240 GB #2 (second unit) | SSD | 782 | 4,192 | 622 | 1.7x |
-  | 7 | Sabrent 240 GB #1 | SSD | 809 | 3,999 | 640 | 1.7x |
-  | 8 | Crucial CT960BX5 960 GB | SSD | 907 | 4,124 | 812 | 1.9x |
-  | 9 | Earlier USB SSD (110 GB, first session; probably one of the OCZs, not confirmed) | SSD | 977 | 4,564 | 1,076 | 2.1x |
-  | 10 | Transcend TS256GSS 256 GB | SSD | 1,603 | 5,605 | 2,024 | 3.4x |
-  | 11 | PNY 128 GB | USB stick / flash | 2,005 | 14,183 | 4,731 | 4.3x |
-  | 12 | "USB DISK 3.0" 64 GB | USB stick / flash | 2,253 | 20,425 | 3,830 | 4.8x |
-  | 13 | ADATA 8 GB | USB stick / flash | 7,990 | 22,375 | 3,703 | 17x |
-  | 14 | WDC WD10SPZX 1 TB (2.5" spinning disk) | HDD | 9,328 | 16,615 | 11,613 | 20x |
-  | 15 | "USB DISK 2.0" 4 GB | USB stick / flash | 18,266 | 21,787 | 3,326 | 39x |
-  | 16 | SanDisk 4 GB "U3 Cruzer Micro" | USB stick / flash | never completes | >37,000 | n/a | n/a |
-  | 17 | "USB Disk 20" 126 GB (label "VendorC", size exactly 120,000 MiB) | USB stick / flash | never completes | 44,500-73,000 (avg ~55,000) | n/a | n/a |
+  | 3 | OCZ-VERT EX3 120 GB, third unit | SSD | 729 | 4,064 | 537 | 1.6x |
+  | 4 | OCZ Solid 3 120 GB, second unit | SSD | 740 | 4,134 | 549 | 1.6x |
+  | 5 | OCZ-VERT EX3 120 GB, first unit | SSD | 756 | 4,019 | 559 | 1.6x |
+  | 6 | OCZ Solid 3 120 GB, first unit | SSD | 768 | 4,046 | 570 | 1.6x |
+  | 7 | Sabrent 240 GB #2 (second unit) | SSD | 782 | 4,192 | 622 | 1.7x |
+  | 8 | Sabrent 240 GB #1 | SSD | 809 | 3,999 | 640 | 1.7x |
+  | 9 | Crucial CT960BX5 960 GB | SSD | 907 | 4,124 | 812 | 1.9x |
+  | 10 | Earlier USB SSD (110 GB, first session; probably one of the OCZs, not confirmed) | SSD | 977 | 4,564 | 1,076 | 2.1x |
+  | 11 | Transcend TS256GSS 256 GB | SSD | 1,603 | 5,605 | 2,024 | 3.4x |
+  | 12 | PNY 128 GB | USB stick / flash | 2,005 | 14,183 | 4,731 | 4.3x |
+  | 13 | "USB DISK 3.0" 64 GB | USB stick / flash | 2,253 | 20,425 | 3,830 | 4.8x |
+  | 14 | ADATA 8 GB | USB stick / flash | 7,990 | 22,375 | 3,703 | 17x |
+  | 15 | WDC WD10SPZX 1 TB (2.5" spinning disk) | HDD | 9,328 | 16,615 | 11,613 | 20x |
+  | 16 | "USB DISK 2.0" 4 GB | USB stick / flash | 18,266 | 21,787 | 3,326 | 39x |
+  | 17 | SanDisk 4 GB "U3 Cruzer Micro" | USB stick / flash | never completes | >37,000 | n/a | n/a |
+  | 18 | "USB Disk 20" 126 GB (label "VendorC", size exactly 120,000 MiB) | USB stick / flash | never completes | 44,500-73,000 (avg ~55,000) | n/a | n/a |
 
-  Notes: internal is the typical figure of the later sessions (428-687 over the day, odd outliers 950+). Runs completed: both OCZ-VERT EX3 units and both Solid 3 units, both Sabrents, Crucial, Transcend and ADATA 4 of 4 (within 2-5%), 64 GB and the WD hard disk 3 of 4, "USB DISK 2.0" 2 of 4 (the rest
+  Notes: internal is the typical figure of the later sessions (428-687 over the day, odd outliers 950+). Runs completed: all three OCZ-VERT EX3 units and both Solid 3 units, both Sabrents, Crucial, Transcend and ADATA 4 of 4 (within 2-5%), 64 GB and the WD hard disk 3 of 4, "USB DISK 2.0" 2 of 4 (the rest
   were abandoned ~22-24 s into the create phase), SanDisk 0 of 5 and "USB Disk 20" 0 of 4 (vold's create phase ran ~37 s for the SanDisk and 44-73 s for "USB Disk 20" before the benchmark was abandoned, and the failed runs slowed the internal create step to 6-14 s; "USB Disk 20" reports an exactly round 120,000 MiB with generic names, so it may be a counterfeit/relabeled drive, not verified; read phase times from `adb logcat -d | grep vold`, the "Creating ..." to
   "Destroying ..." lines). The first `sm benchmark` after a pause often returns no timings on the sticks and the hard disk (PNY twice, 64 GB once, WD10SPZX once; the ADATA and the SSDs never): just rerun it. A failed run on the HDD (and the
   M.2 enclosure earlier) also stalled the next internal benchmark (create 68 s), so a hiccuping drive can drag the whole system. The WD10SPZX is a bus-powered 2.5" hard disk: it worked here but is the worst of all on delete.
