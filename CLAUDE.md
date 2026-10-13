@@ -108,8 +108,11 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   (`/mnt/expand/<uuid>` is root-owned; no `dd`), so benchmark with `adb shell sm benchmark private` (internal) / `sm benchmark private:8,2` (the drive). It prints create/run/drop/destroy times (lower is better); ignore `ident`.
   Averages (3 runs): internal run 553 / create 4856 / destroy 48; USB SSD run 977 / create 4564 / destroy 1076; PNY 128 GB stick run 2005 / create 14183 / destroy 4731 (the stick stayed this slow after 10 min idle);
   **ADATA 8 GB stick** (4 runs, direct, stable) run 7990 (5907-9193) / create 22375 / destroy 3703 against internal 459 / 4491 / 41 in the same session: ~4x slower than the PNY on the core test, ~17x slower than internal. Use only as cold storage.
+  **64 GB stick** ("USB DISK 3.0", 62 GB, direct; 3 of 4 runs reported, the first returned no timings like the PNY's) run 2253 (1950-2505) / create 20425 / destroy 3830 (1190-5210) against internal 687 / 4636 / 50:
+  about the same as the PNY (~12% slower on the core test), 3.5x faster than the ADATA, 2.3x slower than the SSD. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB.
+  The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it.
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
-  `usb_device_open failed`), so no card numbers exist. The 64 GB stick was never benchmarked.
+  `usb_device_open failed`), so no card numbers exist. 
   The first benchmark after a pause sometimes returns no timings on the stick. Both are mounted `dirsync`, which makes deletes much slower than on internal. Use a drive as a capacity safety net, not for Channels' hot data.
   Android moves apps back to internal storage when an adopted drive is removed (Channels was back under `/data/app` after the swap); formatting a new drive creates a new volume UUID.
 - **USB hubs and NVMe enclosures do not work on the TiVo Stream 4K (tried 2026-10-13 on Dad's TV).** A 4-port USB-C hub with two sticks and a Sabrent M.2 NVMe enclosure made the TV hard-reset on every plug-in
