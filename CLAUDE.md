@@ -111,7 +111,9 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   **64 GB stick** ("USB DISK 3.0", 62 GB, direct; 3 of 4 runs reported, the first returned no timings like the PNY's) run 2253 (1950-2505) / create 20425 / destroy 3830 (1190-5210) against internal 687 / 4636 / 50:
   about the same as the PNY (~12% slower on the core test), 3.5x faster than the ADATA, 2.3x slower than the SSD. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB.
   **SanDisk 4 GB "U3 Cruzer Micro"** (old USB 2.0 stick, direct): `sm benchmark` never completes (5 of 5 runs return no timings): vold's create phase alone ran ~37 s each time before the benchmark was abandoned, vs ~4.6 s internal,
-  ~14 s PNY, ~20 s 64 GB, ~22 s ADATA (read the phase times from `adb logcat -d | grep vold`, "Creating ..." to "Destroying ..." lines). Slowest drive tested: unusable. Final ranking: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB, SanDisk 4 GB.
+  ~14 s PNY, ~20 s 64 GB, ~22 s ADATA (read the phase times from `adb logcat -d | grep vold`, "Creating ..." to "Destroying ..." lines). Unusable.
+  **"USB DISK 2.0" 4 GB stick** (direct; only 2 of 4 runs reported, the others were abandoned ~22-24 s into the create phase): run 18266 (18827, 17704) / create 21787 / destroy 3326 against internal ~450 / ~6000 / 48:
+  create and delete like the ADATA/64 GB, but the core test is ~2.3x slower than the ADATA. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB.
   The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it.
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
   `usb_device_open failed`), so no card numbers exist.
