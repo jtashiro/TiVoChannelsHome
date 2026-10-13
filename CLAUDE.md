@@ -112,13 +112,13 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   about the same as the PNY (~12% slower on the core test), 3.5x faster than the ADATA, 2.3x slower than the SSD. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB.
   The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it.
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
-  `usb_device_open failed`), so no card numbers exist. 
-  The first benchmark after a pause sometimes returns no timings on the stick. Both are mounted `dirsync`, which makes deletes much slower than on internal. Use a drive as a capacity safety net, not for Channels' hot data.
+  `usb_device_open failed`), so no card numbers exist.
+  All the USB drives are mounted `dirsync`, which makes deletes much slower than on internal. Use a drive as a capacity safety net, not for Channels' hot data.
   Android moves apps back to internal storage when an adopted drive is removed (Channels was back under `/data/app` after the swap); formatting a new drive creates a new volume UUID.
 - **USB hubs and NVMe enclosures do not work on the TiVo Stream 4K (tried 2026-10-13 on Dad's TV).** A 4-port USB-C hub with two sticks and a Sabrent M.2 NVMe enclosure made the TV hard-reset on every plug-in
   (boot reason `reboot,14200704xx` = clock not set = power loss/reset; logged at 12:14, ~12:39 and ~12:43). Behind the hub only the enclosure ever enumerated (sticks never appeared on the bus); its `sm benchmark` stalled
   (run phase ~34 s vs ~0.5 s internal, create once >2 min, results often missing) and a stall also slowed internal storage. The enclosure plugged **directly** was not detected at all, even after a hard power cycle (bus shows only
-  `usb1`/`usb2`). What did work on the direct port: a SATA USB SSD and the PNY 128 GB stick. A 64 GB stick was never benchmarked. **Never hot-plug USB on these boxes**: power the TV off, connect, then power on.
+  `usb1`/`usb2`). What did work on the direct port: a SATA USB SSD and the PNY 128 GB stick. **Never hot-plug USB on these boxes**: power the TV off, connect, then power on.
   The unexplained `reboot,14200704xx` hard resets on .115 (09:16, 09:36 2026-10-13) and .133 (2026-10-12) coincided with USB changes or thrash, so they are probably USB hot-plug resets (not proven); a third on .115 (~11:03)
   followed the encoder storm. Check the bus with `adb shell "ls /sys/bus/usb/devices; sm list-disks adoptable; dumpsys usb | grep product_name"` (the shell cannot read USB speed or power).
 
