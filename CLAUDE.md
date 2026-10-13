@@ -12,7 +12,7 @@ The TVs run Android 12 (SDK 31; TiVo Stream 4K, Amlogic). One client is a Chrome
 - `app/build.gradle.kts` - NOTE: `assembleDebug` is `finalizedBy("installDebug")` and then `uninstallOemApps` removes ~14 packages (incl. `com.netflix.ninja`,
   Amazon, Sling, Plex) with `pm uninstall --user 0`. It acts on whatever device adb selects. **Always `export ANDROID_SERIAL=<ip>:5555` first.**
 - A second repo, `~/ha-docker` (GitHub jtashiro/ha-docker, runs on the Ubuntu server hp.local), holds Home Assistant plus host services that reach these TVs over adb:
-  collector (status + the dashboard's "TiVoChannelsHome app" column), reboot scheduler, channel schedule. Do not duplicate that here.
+  collector (status + the dashboard's "TiVoChannelsHome app" column), reboot scheduler, channel schedule, auto cache trim, sluggish watchdog. Do not duplicate that here (a short summary is under "Host side").
 
 ## The house
 Cord-cut: Channels DVR on dvr.local (192.168.1.61, all TVs use it; a second DVR at .30), three HDHomeRun tuners, Xfinity via TV Everywhere. Clients (adb on :5555):
@@ -83,6 +83,22 @@ live TV (`channel.number` in `/api/status`) or a recording (no `channel`; the fi
 overriding the Live channel (`tuneLive`, or `POST /api/play/recording/<id>` / deep link `channels://com.getchannels.dvr.app/play/recording/<id>`), once, if it is under 12 h old; with nothing saved, or the option off, it does what the LIVE button does.
 Channels' status drops to "stopped" within ~0.4 s of sleep (measured on .102), so the service polls `/api/status` every 4 s while the screen is on (`lastSnap`) and uses that if the status at power off is already stopped (max 10 s old).
 Channels restarts a recording from its own saved resume point, so the playback position at power off is saved too and, after the resume, the service seeks by the difference (`POST /api/seek/<seconds>` is a RELATIVE seek, negative = back, fractions ok; measured on .137).
+
+## Host side (ha-docker repo on hp.local): cache trim, sluggish watchdog, dashboard (2026-10-12/13)
+Not part of this app, but it acts on the same TVs; the details are in the ha-docker repo (`ssh hp.local`, `~/ha-docker`; the Mac's `~/ha-docker` is a stale copy without git or `tools/`).
+- **Auto cache trim** `tools/tivo_autotrim.py` (timer every 10 min): trims app caches (`pm trim-caches`) when a TV's internal free space is under its **cache floor**, at most once per **check duration**
+  (cooldown). Both are per TV on its dashboard page ("Automatic cache trim" card; files `config/tivo/trim-floor-gb-<ip>.txt`, `trim-cooldown-h-<ip>.txt`), fall back to the old global files, then to the defaults 1 GB / 2 hrs.
+- **Sluggish watchdog** `tools/tivo_sluggish.py` (service `tivo-sluggish`, samples every 15 s): the TVs' kernel is 4.9 (no PSI), so it uses `/proc/vmstat` deltas (swap in/out, workingset refaults, allocation stalls)
+  with MemAvailable. HOT = RAM under the limit and swap/refault/stalls over theirs; N hot samples in a row = **emergency (adhoc) clear**: cache trim + `am kill-all`, then a bell notification
+  ("ADHOC emergency cache clear", reboot-event file with kind `adhoc`). Limits per TV on the dashboard's Watchdog card (`config/tivo/slug-<key>-<ip>.txt`; defaults 350 MB / 200 swap / 1500 refault / 3 stalls / 3 samples / 10 min; on/off switch).
+  Log: `config/tivo/sluggish.log`; `python3 tivo_sluggish.py --watch --dry-run [--only <ip>]` shows live numbers. Idle TVs measure ~0 swap and <2 refaults/s; the thresholds are untuned guesses until a real freeze is logged.
+  The cache trim frees disk, not RAM (`ram_after` barely moves); the `am kill-all` is what frees memory.
+- **Dashboard** (`tools/gen_tivo_dashboard.py --deploy`): each TV page is a 3-column *sections* view; each column ends with one chart (storage, RAM, load) with its own timeframe drop-down
+  (`input_select.tivo_<k>_chart_<kind>`: 24 hours / 7 / 30 / 60 / 90 days; up to 7 days raw history, longer = statistics). The fleet charts were removed from the Channels Clients tab.
+- **Gotchas learned**: HA derives an entity_id from the entity's *name*, not its `unique_id` (twice a card pointed at a wrong id); new selects/options need Developer Tools > YAML > *Template entities* reload,
+  new input_selects need *Input select* reload, new shell_command/command_line sensors need an HA restart. `config/scripts/` is root-owned: deploy a changed script with `docker cp tools/<f>.py homeassistant:/config/scripts/`
+  (the systemd timers/services run that copy, not `tools/`). The collector's `apps-<ip>.json` can be stale (check `pm list packages`); some TiVo system apps are "core" and cannot be uninstalled.
+- Adopted USB storage was tried on every TiVo and removed (about 4x slower than internal); trim + daily reboot is the chosen approach.
 
 ## App tile (launcher entry) can be found disabled
 On .98, .115 and .192 `MainActivity` (the Installed Apps tile) was found in `disabledComponents` (cause unknown - none of our scripts/code does it); the system then does not resolve the
