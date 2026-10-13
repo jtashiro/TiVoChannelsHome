@@ -118,6 +118,10 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   ~1.6x slower than internal on the core test, create as fast as internal, delete ~11x slower (`dirsync`); ~2.7x faster than the PNY stick and 3-24x faster than the other sticks. Better than the earlier SSD figures
   (977 / 4564 / 1076): maybe the same drive freshly reformatted, not established. The only drive here that could plausibly host Channels' cache. Full ranking on the core test: internal, 120 GB SSD, PNY 128 GB, 64 GB,
   ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB.
+  **Crucial CT960BX5 960 GB SATA SSD** (direct, adopted 878 GiB): 4 of 4 runs complete within ~2%: run 907 (890-922) / create 4124 / destroy 812 against internal ~487 / ~4960 / ~51 in the same session:
+  ~1.9x slower than internal on the core test (~20% slower than the 120 GB OCZ), create as fast as internal, delete ~16x slower (`dirsync`), 2.2x faster than the PNY stick. Ranking on the core test: internal,
+  120 GB OCZ, Crucial 960 GB, PNY 128 GB, 64 GB, ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB. USB 2.0 caps all the SSDs, so the SSD-to-SSD differences are modest.
+  Dining room (.115) runs Channels from its USB SSD; its free space fell ~3.4 GB net in ~2 h (about 30 MB/min of net writes; `/proc/diskstats` is blocked so reads cannot be seen).
   The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it.
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
   `usb_device_open failed`), so no card numbers exist.
