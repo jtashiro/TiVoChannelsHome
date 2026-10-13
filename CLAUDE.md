@@ -98,7 +98,12 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
 - **Gotchas learned**: HA derives an entity_id from the entity's *name*, not its `unique_id` (twice a card pointed at a wrong id); new selects/options need Developer Tools > YAML > *Template entities* reload,
   new input_selects need *Input select* reload, new shell_command/command_line sensors need an HA restart. `config/scripts/` is root-owned: deploy a changed script with `docker cp tools/<f>.py homeassistant:/config/scripts/`
   (the systemd timers/services run that copy, not `tools/`). The collector's `apps-<ip>.json` can be stale (check `pm list packages`); some TiVo system apps are "core" and cannot be uninstalled.
-- Adopted USB storage was tried on every TiVo and removed (about 4x slower than internal); trim + daily reboot is the chosen approach.
+- **USB storage (adopted as internal), measured 2026-10-13 on Dad's TV (.137)**: tried on every TiVo and removed (about 4x slower than internal); trim + daily reboot is the chosen approach. The TiVo Stream 4K's USB-C port
+  is **USB 2.0** (~35-40 MB/s real, no UASP, so one command at a time: small random I/O and create/delete suffer most), which caps any drive, so a faster SSD would not help. The adb shell cannot write to an adopted volume
+  (`/mnt/expand/<uuid>` is root-owned; no `dd`), so benchmark with `adb shell sm benchmark private` (internal) / `sm benchmark private:8,2` (the drive). It prints create/run/drop/destroy times (lower is better); ignore `ident`.
+  Averages (3 runs): internal run 553 / create 4856 / destroy 48; USB SSD run 977 / create 4564 / destroy 1076; PNY 128 GB stick run 2005 / create 14183 / destroy 4731 (the stick stayed this slow after 10 min idle).
+  The first benchmark after a pause sometimes returns no timings on the stick. Both are mounted `dirsync`, which makes deletes much slower than on internal. Use a drive as a capacity safety net, not for Channels' hot data.
+  Android moves apps back to internal storage when an adopted drive is removed (Channels was back under `/data/app` after the swap); formatting a new drive creates a new volume UUID.
 
 ## App tile (launcher entry) can be found disabled
 On .98, .115 and .192 `MainActivity` (the Installed Apps tile) was found in `disabledComponents` (cause unknown - none of our scripts/code does it); the system then does not resolve the
