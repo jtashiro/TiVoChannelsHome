@@ -106,23 +106,26 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
 - **USB storage (adopted as internal), measured 2026-10-13 on Dad's TV (.137)**: tried on every TiVo and removed (about 4x slower than internal); trim + daily reboot is the chosen approach. The TiVo Stream 4K's USB-C port
   is **USB 2.0** (~35-40 MB/s real, no UASP, so one command at a time: small random I/O and create/delete suffer most), which caps any drive, so a faster SSD would not help. The adb shell cannot write to an adopted volume
   (`/mnt/expand/<uuid>` is root-owned; no `dd`), so benchmark with `adb shell sm benchmark private` (internal) / `sm benchmark private:8,2` (the drive). It prints create/run/drop/destroy times (lower is better); ignore `ident`.
-  Averages (3 runs): internal run 553 / create 4856 / destroy 48; USB SSD run 977 / create 4564 / destroy 1076; PNY 128 GB stick run 2005 / create 14183 / destroy 4731 (the stick stayed this slow after 10 min idle);
-  **ADATA 8 GB stick** (4 runs, direct, stable) run 7990 (5907-9193) / create 22375 / destroy 3703 against internal 459 / 4491 / 41 in the same session: ~4x slower than the PNY on the core test, ~17x slower than internal. Use only as cold storage.
-  **64 GB stick** ("USB DISK 3.0", 62 GB, direct; 3 of 4 runs reported, the first returned no timings like the PNY's) run 2253 (1950-2505) / create 20425 / destroy 3830 (1190-5210) against internal 687 / 4636 / 50:
-  about the same as the PNY (~12% slower on the core test), 3.5x faster than the ADATA, 2.3x slower than the SSD. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB.
-  **SanDisk 4 GB "U3 Cruzer Micro"** (old USB 2.0 stick, direct): `sm benchmark` never completes (5 of 5 runs return no timings): vold's create phase alone ran ~37 s each time before the benchmark was abandoned, vs ~4.6 s internal,
-  ~14 s PNY, ~20 s 64 GB, ~22 s ADATA (read the phase times from `adb logcat -d | grep vold`, "Creating ..." to "Destroying ..." lines). Unusable.
-  **"USB DISK 2.0" 4 GB stick** (direct; only 2 of 4 runs reported, the others were abandoned ~22-24 s into the create phase): run 18266 (18827, 17704) / create 21787 / destroy 3326 against internal ~450 / ~6000 / 48:
-  create and delete like the ADATA/64 GB, but the core test is ~2.3x slower than the ADATA. Ranking on the core test: internal, SSD, PNY 128 GB, 64 GB, ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB.
-  **120 GB USB SSD (OCZ-VERT EX3, direct, 2026-10-13 afternoon)**: 4 of 4 runs complete and within ~3%: run 756 (731-784) / create 4019 / destroy 559 against internal ~461 / 4878 / ~50 in the same session:
-  ~1.6x slower than internal on the core test, create as fast as internal, delete ~11x slower (`dirsync`); ~2.7x faster than the PNY stick and 3-24x faster than the other sticks. Better than the earlier SSD figures
-  (977 / 4564 / 1076): maybe the same drive freshly reformatted, not established. The only drive here that could plausibly host Channels' cache. Full ranking on the core test: internal, 120 GB SSD, PNY 128 GB, 64 GB,
-  ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB.
-  **Crucial CT960BX5 960 GB SATA SSD** (direct, adopted 878 GiB): 4 of 4 runs complete within ~2%: run 907 (890-922) / create 4124 / destroy 812 against internal ~487 / ~4960 / ~51 in the same session:
-  ~1.9x slower than internal on the core test (~20% slower than the 120 GB OCZ), create as fast as internal, delete ~16x slower (`dirsync`), 2.2x faster than the PNY stick. Ranking on the core test: internal,
-  120 GB OCZ, Crucial 960 GB, PNY 128 GB, 64 GB, ADATA 8 GB, "USB DISK 2.0" 4 GB, SanDisk 4 GB. USB 2.0 caps all the SSDs, so the SSD-to-SSD differences are modest.
-  Dining room (.115) runs Channels from its USB SSD; its free space fell ~3.4 GB net in ~2 h (about 30 MB/min of net writes; `/proc/diskstats` is blocked so reads cannot be seen).
-  The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it.
+  **Benchmark results** (ms from `sm benchmark`, lower is better; every drive direct on the USB 2.0 port of Dad's TV, 2026-10-13; sorted best to worst by the core test `run`):
+
+  | # | Drive | Type | run (core test) | create | destroy | run vs internal |
+  |---|---|---|---|---|---|---|
+  | 1 | Internal flash (baseline, typical) | Internal flash | 468 | 4,570 | 50 | 1.0x |
+  | 2 | OCZ-VERT EX3 120 GB | SSD | 756 | 4,019 | 559 | 1.6x |
+  | 3 | Crucial CT960BX5 960 GB | SSD | 907 | 4,124 | 812 | 1.9x |
+  | 4 | Earlier USB SSD (110 GB, first session; probably the OCZ, not confirmed) | SSD | 977 | 4,564 | 1,076 | 2.1x |
+  | 5 | Transcend TS256GSS 256 GB | SSD | 1,603 | 5,605 | 2,024 | 3.4x |
+  | 6 | PNY 128 GB | USB stick / flash | 2,005 | 14,183 | 4,731 | 4.3x |
+  | 7 | "USB DISK 3.0" 64 GB | USB stick / flash | 2,253 | 20,425 | 3,830 | 4.8x |
+  | 8 | ADATA 8 GB | USB stick / flash | 7,990 | 22,375 | 3,703 | 17x |
+  | 9 | "USB DISK 2.0" 4 GB | USB stick / flash | 18,266 | 21,787 | 3,326 | 39x |
+  | 10 | SanDisk 4 GB "U3 Cruzer Micro" | USB stick / flash | never completes | >37,000 | n/a | n/a |
+
+  Notes: internal is the typical figure of the later sessions (428-687 over the day, odd outliers 950+). Runs completed: OCZ, Crucial, Transcend and ADATA 4 of 4 (within 2-4%), 64 GB 3 of 4, "USB DISK 2.0" 2 of 4 (the rest
+  were abandoned ~22-24 s into the create phase), SanDisk 0 of 5 (vold's create phase ran ~37 s each time before the benchmark was abandoned; read phase times from `adb logcat -d | grep vold`, the "Creating ..." to
+  "Destroying ..." lines). The first `sm benchmark` after a pause often returns no timings on the sticks (PNY twice, 64 GB once; the ADATA never): just rerun it. Every SSD beats every stick on the core test, and USB 2.0 caps
+  the SSDs so the SSD-to-SSD gaps are modest; only an SSD could plausibly host Channels' cache (the Transcend is the slowest SSD, reason unknown). Dining room (.115) runs Channels from its USB SSD: its free space fell ~3.4 GB
+  net in ~2 h (about 30 MB/min of net writes; `/proc/diskstats` is blocked, so reads cannot be seen).
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
   `usb_device_open failed`), so no card numbers exist.
   All the USB drives are mounted `dirsync`, which makes deletes much slower than on internal. Use a drive as a capacity safety net, not for Channels' hot data.
