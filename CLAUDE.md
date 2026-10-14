@@ -140,12 +140,17 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   `usb_device_open failed`), so no card numbers exist.
   All the USB drives are mounted `dirsync`, which makes deletes much slower than on internal. Use a drive as a capacity safety net, not for Channels' hot data.
   Android moves apps back to internal storage when an adopted drive is removed (Channels was back under `/data/app` after the swap); formatting a new drive creates a new volume UUID.
-- **USB hubs and NVMe enclosures do not work on the TiVo Stream 4K (tried 2026-10-13 on Dad's TV).** A 4-port USB-C hub with two sticks and a Sabrent M.2 NVMe enclosure made the TV hard-reset on every plug-in
+- **UNPOWERED USB hubs and an NVMe enclosure did not work on the TiVo Stream 4K (tried 2026-10-13 on Dad's TV); a powered hub/dock is the open question.** The hub used was NOT externally powered, so its failure is consistent with a power shortfall, not proof that hubs cannot work. A 4-port USB-C hub with two sticks and a Sabrent M.2 NVMe enclosure made the TV hard-reset on every plug-in
   (boot reason `reboot,14200704xx` = clock not set = power loss/reset; logged at 12:14, ~12:39 and ~12:43). Behind the hub only the enclosure ever enumerated (sticks never appeared on the bus); its `sm benchmark` stalled
   (run phase ~34 s vs ~0.5 s internal, create once >2 min, results often missing) and a stall also slowed internal storage. The enclosure plugged **directly** was not detected at all, even after a hard power cycle (bus shows only
   `usb1`/`usb2`). What did work on the direct port: a SATA USB SSD and the PNY 128 GB stick. **Never hot-plug USB on these boxes**: power the TV off, connect, then power on.
   The unexplained `reboot,14200704xx` hard resets on .115 (09:16, 09:36 2026-10-13) and .133 (2026-10-12) coincided with USB changes or thrash, so they are probably USB hot-plug resets (not proven); a third on .115 (~11:03)
-  followed the encoder storm. Check the bus with `adb shell "ls /sys/bus/usb/devices; sm list-disks adoptable; dumpsys usb | grep product_name"` (the shell cannot read USB speed or power).
+  followed the encoder storm.
+  **Samsung (.98) powered-dock trial, 2026-10-13/14:** attaching an adopted drive on the box's own port (the PNY stick, then an OCZ Solid 3 SSD) was followed by hard resets (23:03) and repeated reboots a few seconds after Channels started
+  playing from the drive with HDMI plugged in and the TV on; the same OCZ SSD ran stable with HDMI unplugged for about 10 minutes. CEC (Anynet+) was off the whole time, and several different 5 V AC-USB adapters, including the one TiVo supplied, still
+  rebooted, so a weak adapter is unlikely; the adapter was on the battery-backup side of an APC UPS (not ruled out). The same SSD models ran bus-powered with no resets on .137 and .115. After the SSD was moved into a self-powered single-bay
+  dock (JMicron bridge, one drive on the bus) with Channels on it, the box was up 11+ min with no reboot (too short to call it fixed). Treat power at the box as the leading suspect, unproven.
+  Moving an app off an adopted drive (`pm move-package <pkg> internal`) before removing the drive keeps it; moving *our* app switches the accessibility service off (re-set `enabled_accessibility_services`). Check the bus with `adb shell "ls /sys/bus/usb/devices; sm list-disks adoptable; dumpsys usb | grep product_name"` (the shell cannot read USB speed or power).
 
 ## App tile (launcher entry) can be found disabled
 On .98, .115 and .192 `MainActivity` (the Installed Apps tile) was found in `disabledComponents` (cause unknown - none of our scripts/code does it); the system then does not resolve the
