@@ -121,19 +121,20 @@ Not part of this app, but it acts on the same TVs; the details are in the ha-doc
   | 9 | Crucial CT960BX5 960 GB | SSD | 907 | 4,124 | 812 | 1.9x |
   | 10 | Earlier USB SSD (110 GB, first session; probably one of the OCZs, not confirmed) | SSD | 977 | 4,564 | 1,076 | 2.1x |
   | 11 | Transcend TS256GSS 256 GB | SSD | 1,603 | 5,605 | 2,024 | 3.4x |
-  | 12 | PNY 128 GB | USB stick / flash | 2,005 | 14,183 | 4,731 | 4.3x |
-  | 13 | "USB DISK 3.0" 64 GB | USB stick / flash | 2,253 | 20,425 | 3,830 | 4.8x |
-  | 14 | ADATA 8 GB | USB stick / flash | 7,990 | 22,375 | 3,703 | 17x |
-  | 15 | WDC WD10SPZX 1 TB (2.5" spinning disk) | HDD | 9,328 | 16,615 | 11,613 | 20x |
-  | 16 | "USB DISK 2.0" 4 GB | USB stick / flash | 18,266 | 21,787 | 3,326 | 39x |
-  | 17 | SanDisk 4 GB "U3 Cruzer Micro" | USB stick / flash | never completes | >37,000 | n/a | n/a |
-  | 18 | "USB Disk 20" 126 GB (label "VendorC", size exactly 120,000 MiB) | USB stick / flash | never completes | 44,500-73,000 (avg ~55,000) | n/a | n/a |
+  | 12 | SanDisk "3.2Gen1" ~128 GB (117 GB usable) | USB stick / flash | 1,749 | 6,756 | 1,082 | 3.7x |
+  | 13 | PNY 128 GB | USB stick / flash | 2,005 | 14,183 | 4,731 | 4.3x |
+  | 14 | "USB DISK 3.0" 64 GB | USB stick / flash | 2,253 | 20,425 | 3,830 | 4.8x |
+  | 15 | ADATA 8 GB | USB stick / flash | 7,990 | 22,375 | 3,703 | 17x |
+  | 16 | WDC WD10SPZX 1 TB (2.5" spinning disk) | HDD | 9,328 | 16,615 | 11,613 | 20x |
+  | 17 | "USB DISK 2.0" 4 GB | USB stick / flash | 18,266 | 21,787 | 3,326 | 39x |
+  | 18 | SanDisk 4 GB "U3 Cruzer Micro" | USB stick / flash | never completes | >37,000 | n/a | n/a |
+  | 19 | "USB Disk 20" 126 GB (label "VendorC", size exactly 120,000 MiB) | USB stick / flash | never completes | 44,500-73,000 (avg ~55,000) | n/a | n/a |
 
   Notes: internal is the typical figure of the later sessions (428-687 over the day, odd outliers 950+). Runs completed: all three OCZ-VERT EX3 units and both Solid 3 units, both Sabrents, Crucial, Transcend and ADATA 4 of 4 (within 2-5%), 64 GB and the WD hard disk 3 of 4, "USB DISK 2.0" 2 of 4 (the rest
   were abandoned ~22-24 s into the create phase), SanDisk 0 of 5 and "USB Disk 20" 0 of 4 (vold's create phase ran ~37 s for the SanDisk and 44-73 s for "USB Disk 20" before the benchmark was abandoned, and the failed runs slowed the internal create step to 6-14 s; "USB Disk 20" reports an exactly round 120,000 MiB with generic names, so it may be a counterfeit/relabeled drive, not verified; read phase times from `adb logcat -d | grep vold`, the "Creating ..." to
   "Destroying ..." lines). The first `sm benchmark` after a pause often returns no timings on the sticks and the hard disk (PNY twice, 64 GB once, WD10SPZX once; the ADATA and the SSDs never): just rerun it. A failed run on the HDD (and the
   M.2 enclosure earlier) also stalled the next internal benchmark (create 68 s), so a hiccuping drive can drag the whole system. The WD10SPZX is a bus-powered 2.5" hard disk: it worked here but is the worst of all on delete.
-  The two Sabrent 240 GB SSDs (identical model) ran at the same time without a TV reset (benchmarked one at a time). Every SSD beats every stick on the core test, and USB 2.0 caps
+  The two Sabrent 240 GB SSDs (identical model) ran at the same time without a TV reset (benchmarked one at a time). The SanDisk 3.2Gen1 is the fastest stick (4 of 4 runs, run 1,461-2,053, create ~6.8 s); every SSD beats every stick on the core test, and USB 2.0 caps
   the SSDs so the SSD-to-SSD gaps are modest; only an SSD could plausibly host Channels' cache (the Transcend is the slowest SSD, reason unknown). Dining room (.115) runs Channels from its USB SSD: its free space fell ~3.4 GB
   net in ~2 h (about 30 MB/min of net writes; `/proc/diskstats` is blocked, so reads cannot be seen).
   A 4-slot USB 2.0 multi-card reader ("Generic MultiCard Device" 1307:0361) with two 16 GB cards exposed 4 disks but only one card was detected, and its volume kept vanishing mid-benchmark (reader re-enumerating,
