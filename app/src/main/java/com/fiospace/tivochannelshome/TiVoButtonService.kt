@@ -391,8 +391,9 @@ class TiVoButtonService : AccessibilityService() {
     }
 
     /**
-     * Channels already playing/paused: its API retunes inside that player (a deep link would start a second PlayerActivity over it).
+     * Channels playing/paused: raise it to the front first (a player behind another app ignores the API), then its API retunes inside that player.
      * Otherwise (closed, or open on a menu, where the API answers but a tune does nothing): the deep link, which starts the app on the channel.
+     * Still not playing (e.g. "stopped" with a live PlayerActivity): raise + API again, last resort kill the process and deep link.
      * Already playing [ch]: just bring the app to the front, do not restart the stream.
      */
     private fun tuneLive(ch: String) {
@@ -404,8 +405,12 @@ class TiVoButtonService : AccessibilityService() {
             return
         }
         if (status == "playing" || status == "paused") {
-            Log.i(TAG, "LIVE button: tuning $ch through the Channels API")
-            if (channelsApi("POST", "/api/play/channel/$ch") != null && waitPlaying(ch, 10_000)) {
+            // A player behind another app ignores a tune POST (200, nothing happens) and a deep link leaves it "stopped" for good; in front it takes the POST.
+            // Raising it can flip paused -> stopped, which the POST also recovers from.
+            Log.i(TAG, "LIVE button: bringing Channels to the front, then tuning $ch through the API")
+            bringChannelsToFront()
+            Thread.sleep(1_500)
+            if (apiTune(ch, 10_000)) {
                 Log.i(TAG, "LIVE button: playing $ch via api in ${System.currentTimeMillis() - t0} ms")
                 return
             }
@@ -414,12 +419,32 @@ class TiVoButtonService : AccessibilityService() {
             Log.i(TAG, "LIVE button: no player running (status=$status), opening Channels on $ch")
         }
         launchChannelsDeepLink(ch)
-        if (waitPlaying(ch, 25_000)) {
+        if (waitPlaying(ch, 12_000)) {
             Log.i(TAG, "LIVE button: playing $ch via deeplink in ${System.currentTimeMillis() - t0} ms")
+            return
+        }
+        // Stuck "stopped" with a live PlayerActivity (measured on .137): a second deep link does nothing, but the player in front takes the API.
+        Log.w(TAG, "LIVE button: deep link did not play $ch, raising Channels and trying the API")
+        bringChannelsToFront()
+        Thread.sleep(1_500)
+        if (apiTune(ch, 8_000)) {
+            Log.i(TAG, "LIVE button: playing $ch via api after deeplink in ${System.currentTimeMillis() - t0} ms")
+            return
+        }
+        // Last resort: a fresh process has no old activity to race with.
+        Log.w(TAG, "LIVE button: killing Channels and starting it on $ch")
+        (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(CHANNELS_PKG)
+        Thread.sleep(2_000)
+        launchChannelsDeepLink(ch)
+        if (waitPlaying(ch, 25_000)) {
+            Log.i(TAG, "LIVE button: playing $ch after kill in ${System.currentTimeMillis() - t0} ms")
         } else {
             Log.w(TAG, "LIVE button: $ch not playing after ${System.currentTimeMillis() - t0} ms")
         }
     }
+
+    private fun apiTune(ch: String, timeoutMs: Long): Boolean =
+        channelsApi("POST", "/api/play/channel/$ch") != null && waitPlaying(ch, timeoutMs)
 
     private fun launchChannelsDeepLink(ch: String, kind: String = "channel") {
         try {
